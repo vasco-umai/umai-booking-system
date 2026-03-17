@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UMAI - Join Your Team</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --teal:#2BBCB3;
+  --teal-dark:#24a39b;
+  --bg:#EFF3F6;
+  --white:#fff;
+  --text:#2D2D3A;
+  --text-mid:#71717A;
+  --text-light:#A1A1AA;
+  --border:#E0E0E6;
+  --error:#ef4444;
+  --success:#22c55e;
+  --r:12px;
+  --r-sm:8px;
+  --r-pill:50px;
+  --tr:0.2s ease;
+}
+html{font-size:16px}
+body{
+  font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  padding:32px;
+  -webkit-font-smoothing:antialiased;
+}
+.card{
+  background:var(--white);
+  border-radius:var(--r);
+  padding:48px 40px;
+  width:100%;max-width:440px;
+  box-shadow:0 4px 24px rgba(0,0,0,0.06);
+  text-align:center;
+}
+.card h1{
+  font-size:22px;font-weight:700;margin-bottom:4px;color:var(--text);
+}
+.card .subtitle{
+  font-size:14px;color:var(--text-mid);margin-bottom:32px;
+}
+.card .greeting{
+  font-size:15px;color:var(--text-mid);margin-bottom:24px;
+}
+.form-group{
+  text-align:left;margin-bottom:16px;
+}
+.form-group label{
+  display:block;font-size:13px;font-weight:500;color:var(--text-mid);margin-bottom:6px;
+}
+.form-group input{
+  width:100%;padding:12px 16px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-family:inherit;font-size:14px;color:var(--text);
+  outline:none;transition:var(--tr);
+}
+.form-group input:focus{
+  border-color:var(--teal);
+}
+.btn{
+  display:inline-block;width:100%;padding:14px 32px;
+  background:var(--teal);color:#fff;border:none;border-radius:var(--r-pill);
+  font-family:inherit;font-size:15px;font-weight:600;
+  cursor:pointer;transition:var(--tr);margin-top:8px;
+}
+.btn:hover{background:var(--teal-dark)}
+.btn:disabled{opacity:0.6;cursor:not-allowed}
+.error-msg{
+  color:var(--error);font-size:13px;margin-top:8px;text-align:left;
+}
+.skip-link{
+  display:inline-block;margin-top:16px;
+  font-size:13px;color:var(--text-light);text-decoration:underline;cursor:pointer;
+}
+.skip-link:hover{color:var(--text-mid)}
+.spinner{
+  width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);
+  border-radius:50%;animation:spin 0.8s linear infinite;margin:24px auto;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.icon{font-size:48px;margin-bottom:16px;}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <!-- State: Loading -->
+  <div id="loadingView">
+    <h1>UMAI <span style="color:var(--teal)">Meetings</span></h1>
+    <div class="spinner"></div>
+    <p style="color:var(--text-mid);font-size:14px;">Validating your invite...</p>
+  </div>
+
+  <!-- State: Error -->
+  <div id="errorView" class="hidden">
+    <div class="icon">&#10007;</div>
+    <h1>Invalid Invite</h1>
+    <p class="subtitle">This invite link is invalid or has expired. Please ask your admin for a new one.</p>
+  </div>
+
+  <!-- State: Set Password -->
+  <div id="passwordView" class="hidden">
+    <h1>UMAI <span style="color:var(--teal)">Meetings</span></h1>
+    <p class="greeting" id="greetingText"></p>
+    <form id="passwordForm">
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="At least 8 characters" required minlength="8">
+      </div>
+      <div class="form-group">
+        <label for="confirmPassword">Confirm Password</label>
+        <input type="password" id="confirmPassword" placeholder="Repeat your password" required minlength="8">
+      </div>
+      <div id="pwError" class="error-msg hidden"></div>
+      <button type="submit" class="btn" id="submitBtn">Set Password & Continue</button>
+    </form>
+  </div>
+
+  <!-- State: Connecting Google -->
+  <div id="connectingView" class="hidden">
+    <h1>Almost there!</h1>
+    <div class="spinner"></div>
+    <p style="color:var(--text-mid);font-size:14px;">Connecting to Google Calendar...</p>
+    <a class="skip-link" id="skipLink">Skip for now</a>
+  </div>
+
+  <!-- State: Already onboarded -->
+  <div id="doneView" class="hidden">
+    <div class="icon">&#10003;</div>
+    <h1>You're all set!</h1>
+    <p class="subtitle">Your account is already set up. You can close this page.</p>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let inviteToken = null;
+let staffData = null;
+let jwtToken = null;
+
+// DOM elements
+const loadingView = document.getElementById('loadingView');
+const errorView = document.getElementById('errorView');
+const passwordView = document.getElementById('passwordView');
+const connectingView = document.getElementById('connectingView');
+const doneView = document.getElementById('doneView');
+const greetingText = document.getElementById('greetingText');
+const passwordForm = document.getElementById('passwordForm');
+const pwError = document.getElementById('pwError');
+const submitBtn = document.getElementById('submitBtn');
+const skipLink = document.getElementById('skipLink');
+
+function showView(view) {
+  [loadingView, errorView, passwordView, connectingView, doneView].forEach(v => v.classList.add('hidden'));
+  view.classList.remove('hidden');
+}
+
+function showError(msg) {
+  pwError.textContent = msg;
+  pwError.classList.remove('hidden');
+}
+
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  inviteToken = params.get('token');
+
+  if (!inviteToken) {
+    showView(errorView);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/api/auth/invite/validate?token=${encodeURIComponent(inviteToken)}`);
+    if (!res.ok) {
+      showView(errorView);
+      return;
+    }
+
+    staffData = await res.json();
+
+    // Already fully onboarded?
+    if (!staffData.needsPassword && staffData.hasGoogleCalendar) {
+      showView(doneView);
+      return;
+    }
+
+    // Password already set, just need Google Calendar
+    if (!staffData.needsPassword) {
+      // They need to log in first to get a JWT
+      showView(passwordView);
+      greetingText.textContent = `Welcome back, ${staffData.name}! Please set a new password to continue.`;
+      return;
+    }
+
+    // Normal flow: set password
+    greetingText.textContent = `Welcome, ${staffData.name}! Set your password to get started.`;
+    showView(passwordView);
+  } catch {
+    showView(errorView);
+  }
+}
+
+passwordForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  pwError.classList.add('hidden');
+
+  const password = document.getElementById('password').value;
+  const confirm = document.getElementById('confirmPassword').value;
+
+  if (password.length < 8) {
+    showError('Password must be at least 8 characters.');
+    return;
+  }
+
+  if (password !== confirm) {
+    showError('Passwords do not match.');
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Setting up...';
+
+  try {
+    const res = await fetch(`${API}/api/auth/set-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, token: inviteToken }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      showError(data.error || 'Something went wrong.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Set Password & Continue';
+      return;
+    }
+
+    jwtToken = data.token;
+
+    // Now redirect to Google Calendar
+    await connectGoogleCalendar();
+  } catch {
+    showError('Network error. Please try again.');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Set Password & Continue';
+  }
+});
+
+async function connectGoogleCalendar() {
+  showView(connectingView);
+
+  try {
+    const res = await fetch(`${API}/api/invite/google/authorize`, {
+      headers: { 'Authorization': `Bearer ${jwtToken}` },
+    });
+
+    if (!res.ok) {
+      // If Google OAuth not configured, show done anyway
+      showView(doneView);
+      document.querySelector('#doneView .subtitle').textContent =
+        'Password set! Google Calendar connection is not available right now. You can connect it later from the admin panel.';
+      return;
+    }
+
+    const data = await res.json();
+    // Redirect to Google consent screen
+    window.location.href = data.url;
+  } catch {
+    showView(doneView);
+    document.querySelector('#doneView .subtitle').textContent =
+      'Password set! Could not connect to Google Calendar. You can connect it later from the admin panel.';
+  }
+}
+
+skipLink.addEventListener('click', () => {
+  showView(doneView);
+  document.querySelector('#doneView h1').textContent = 'Password Set!';
+  document.querySelector('#doneView .subtitle').textContent =
+    'You can connect Google Calendar later from the admin panel.';
+});
+
+init();
+</script>
+</body>
+</html>

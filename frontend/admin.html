@@ -1,0 +1,2626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meetings Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --teal:#2BBCB3;
+  --teal-dark:#24a39b;
+  --teal-10:rgba(43,188,179,0.1);
+  --bg:#EFF3F6;
+  --white:#fff;
+  --card:#F5F7F9;
+  --text:#2D2D3A;
+  --text-mid:#71717A;
+  --text-light:#A1A1AA;
+  --border:#E0E0E6;
+  --border-lt:#EAEAEF;
+  --dark:#1a1a2e;
+  --error:#ef4444;
+  --success:#22c55e;
+  --warning:#f59e0b;
+  --r:12px;
+  --r-sm:8px;
+  --r-pill:50px;
+  --tr:0.2s ease;
+}
+html{font-size:16px}
+body{
+  font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ===== HEADER ===== */
+.hdr{
+  background:var(--white);
+  height:56px;
+  display:flex;align-items:center;justify-content:center;
+  position:sticky;top:0;z-index:100;
+  border-bottom:1px solid var(--border-lt);
+}
+.hdr-in{
+  width:100%;max-width:1200px;padding:0 32px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.hdr-title{
+  font-size:18px;font-weight:700;color:var(--text);
+  display:flex;align-items:center;gap:8px;
+}
+.hdr-title span{
+  color:var(--teal);
+}
+.btn-logout{
+  padding:8px 20px;border:1.5px solid var(--border);
+  border-radius:var(--r-pill);background:transparent;
+  font-family:inherit;font-size:13px;font-weight:500;
+  color:var(--text-mid);cursor:pointer;transition:var(--tr);
+}
+.btn-logout:hover{border-color:var(--error);color:var(--error)}
+
+/* ===== LOGIN ===== */
+.login-wrap{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:32px;
+}
+.login-card{
+  background:var(--white);
+  border-radius:var(--r);
+  padding:48px 40px;
+  width:100%;max-width:420px;
+  box-shadow:0 4px 24px rgba(0,0,0,0.06);
+}
+.login-card h1{
+  font-size:24px;font-weight:700;text-align:center;margin-bottom:4px;
+}
+.login-card h1 span{color:var(--teal)}
+.login-sub{
+  font-size:14px;color:var(--text-mid);text-align:center;margin-bottom:32px;
+}
+.form-group{margin-bottom:20px}
+.form-label{
+  display:block;font-size:12px;font-weight:500;
+  color:var(--text-mid);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;
+}
+.form-input{
+  width:100%;padding:14px 16px;
+  border:1.5px solid var(--border);
+  border-radius:var(--r-sm);
+  font-family:inherit;font-size:15px;color:var(--text);
+  background:var(--card);outline:none;transition:var(--tr);
+}
+.form-input:focus{border-color:var(--teal);background:var(--white)}
+.form-input::placeholder{color:var(--text-light)}
+.login-err{
+  font-size:13px;color:var(--error);text-align:center;
+  margin-bottom:16px;display:none;
+}
+.login-err.show{display:block}
+.login-success{
+  font-size:13px;color:var(--success);text-align:center;
+  margin-bottom:16px;display:none;
+}
+.login-success.show{display:block}
+.forgot-link{
+  text-align:center;margin-top:16px;font-size:13px;
+}
+.forgot-link a{
+  color:var(--teal);text-decoration:none;font-weight:500;
+}
+.forgot-link a:hover{text-decoration:underline}
+.btn{
+  width:100%;padding:16px 32px;border:none;
+  border-radius:var(--r-pill);font-family:inherit;
+  font-size:15px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:var(--tr);
+}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.btn-teal{background:var(--teal);color:#fff}
+.btn-teal:hover:not(:disabled){background:var(--teal-dark)}
+
+/* ===== DASHBOARD ===== */
+.dash{max-width:1200px;margin:0 auto;padding:32px 32px 80px}
+#dashView{display:none}
+.login-wrap{display:none}
+
+/* ===== TABS ===== */
+.tabs{
+  display:flex;gap:4px;margin-bottom:28px;
+  border-bottom:2px solid var(--border-lt);
+  padding-bottom:0;
+}
+.tab-btn{
+  padding:12px 24px;border:none;background:transparent;
+  font-family:inherit;font-size:14px;font-weight:500;
+  color:var(--text-mid);cursor:pointer;
+  border-bottom:2px solid transparent;
+  margin-bottom:-2px;transition:var(--tr);
+}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--teal);border-bottom-color:var(--teal);font-weight:600}
+.tab-panel{display:none;animation:fadeUp .25s ease}
+.tab-panel.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== TABLE ===== */
+.tbl-wrap{
+  background:var(--white);
+  border-radius:var(--r);
+  box-shadow:0 1px 4px rgba(0,0,0,0.04);
+}
+.tbl-wrap>*:last-child{border-radius:0 0 var(--r) var(--r);overflow:hidden}
+.tbl-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:20px 24px;border-bottom:1px solid var(--border-lt);
+  flex-wrap:wrap;gap:12px;border-radius:var(--r) var(--r) 0 0;
+}
+.tbl-bar h2{font-size:16px;font-weight:600}
+.btn-sm{
+  padding:9px 20px;border:none;
+  border-radius:var(--r-pill);font-family:inherit;
+  font-size:13px;font-weight:600;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;
+  transition:var(--tr);
+}
+.btn-sm-teal{background:var(--teal);color:#fff}
+.btn-sm-teal:hover{background:var(--teal-dark)}
+.btn-sm-outline{
+  background:transparent;color:var(--text-mid);
+  border:1.5px solid var(--border);
+}
+.btn-sm-outline:hover{border-color:var(--teal);color:var(--teal)}
+.btn-sm-danger{
+  background:transparent;color:var(--error);
+  border:1.5px solid rgba(239,68,68,0.3);
+}
+.btn-sm-danger:hover{background:rgba(239,68,68,0.06);border-color:var(--error)}
+.btn-sm-cancel{
+  background:transparent;color:var(--warning);
+  border:1.5px solid rgba(245,158,11,0.3);
+}
+.btn-sm-cancel:hover{background:rgba(245,158,11,0.06);border-color:var(--warning)}
+
+table{width:100%;border-collapse:collapse}
+thead th{
+  padding:12px 16px;font-size:11px;font-weight:600;
+  color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;
+  text-align:left;background:var(--card);
+  border-bottom:1px solid var(--border-lt);
+}
+tbody td{
+  padding:14px 16px;font-size:14px;
+  border-bottom:1px solid var(--border-lt);
+  vertical-align:middle;
+}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--card)}
+
+/* ===== STATUS BADGES ===== */
+.badge{
+  display:inline-block;padding:4px 12px;
+  border-radius:var(--r-pill);font-size:11px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.3px;
+}
+.badge-active{background:rgba(34,197,94,0.1);color:var(--success)}
+.badge-inactive{background:rgba(161,161,170,0.1);color:var(--text-light)}
+.badge-confirmed{background:rgba(43,188,179,0.1);color:var(--teal)}
+.badge-cancelled{background:rgba(239,68,68,0.08);color:var(--error)}
+.badge-pending{background:rgba(245,158,11,0.1);color:var(--warning)}
+.badge-completed{background:rgba(34,197,94,0.1);color:var(--success)}
+
+/* ===== CANCELLED COMPARTMENT ===== */
+.cancelled-divider{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 16px;cursor:pointer;user-select:none;
+  border-top:1px solid var(--border-lt);
+}
+.cancelled-divider:hover .cancelled-label{color:var(--text)}
+.cancelled-chevron{
+  width:16px;height:16px;color:var(--text-light);
+  transition:transform .2s ease;flex-shrink:0;
+}
+.cancelled-divider.open .cancelled-chevron{transform:rotate(90deg)}
+.cancelled-label{
+  font-size:12px;font-weight:600;color:var(--text-mid);
+  text-transform:uppercase;letter-spacing:.4px;
+  transition:color .2s ease;
+}
+.cancelled-count{
+  font-size:11px;font-weight:500;color:var(--text-light);
+  background:var(--card);border-radius:var(--r-pill);
+  padding:2px 10px;
+}
+.cancelled-tbody{display:none}
+.cancelled-tbody.open{display:table-row-group}
+.cancelled-tbody tr td{opacity:0.4}
+.cancelled-tbody tr:hover td{opacity:0.65}
+
+/* ===== INLINE FORM ===== */
+.inline-form{
+  padding:24px;background:var(--card);
+  border-bottom:1px solid var(--border-lt);
+  display:none;
+}
+.inline-form.open{display:block;animation:fadeUp .2s ease}
+.if-title{font-size:14px;font-weight:600;margin-bottom:16px}
+.if-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:12px;margin-bottom:16px;
+}
+.if-group label{
+  display:block;font-size:11px;font-weight:500;
+  color:var(--text-mid);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px;
+}
+.if-input{
+  width:100%;padding:10px 12px;
+  border:1.5px solid var(--border);
+  border-radius:var(--r-sm);
+  font-family:inherit;font-size:14px;color:var(--text);
+  background:var(--white);outline:none;transition:var(--tr);
+}
+.if-input:hover{border-color:var(--teal)}
+.if-input:focus{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-10)}
+.if-input[type="datetime-local"]{
+  appearance:none;-webkit-appearance:none;cursor:pointer;
+}
+.if-input[type="datetime-local"]::-webkit-calendar-picker-indicator{
+  cursor:pointer;opacity:0.5;transition:var(--tr);
+}
+.if-input[type="datetime-local"]:hover::-webkit-calendar-picker-indicator{opacity:0.8}
+/* ===== CUSTOM DROPDOWN (matches signup funnel) ===== */
+.cdrop{position:relative;width:100%}
+.cdrop-btn{
+  width:100%;padding:10px 14px;
+  border:1.5px solid var(--border);
+  border-radius:var(--r-sm);
+  font-family:inherit;font-size:14px;font-weight:500;color:var(--text);
+  background:var(--white);cursor:pointer;text-align:left;
+  display:flex;align-items:center;justify-content:space-between;
+  transition:var(--tr);
+}
+.cdrop-btn:hover{border-color:var(--teal)}
+.cdrop-btn:focus{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-10);outline:none}
+.cdrop-btn svg{width:14px;height:14px;color:var(--text-light);flex-shrink:0;transition:var(--tr)}
+.cdrop.open .cdrop-btn{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-10)}
+.cdrop.open .cdrop-btn svg{transform:rotate(180deg)}
+.cdrop-list{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;
+  background:var(--white);border:1.5px solid var(--border-lt);
+  border-radius:var(--r-sm);
+  max-height:180px;overflow-y:auto;z-index:50;
+  box-shadow:0 8px 32px rgba(0,0,0,0.08);
+  display:none;
+}
+.cdrop.open .cdrop-list{display:block;animation:fadeUp .15s ease}
+.cdrop-list::-webkit-scrollbar{width:5px}
+.cdrop-list::-webkit-scrollbar-track{background:transparent}
+.cdrop-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.cdrop-opt{
+  padding:10px 14px;font-size:14px;cursor:pointer;
+  transition:background .1s;
+}
+.cdrop-opt:hover{background:var(--teal-10)}
+.cdrop-opt.sel{background:var(--teal);color:#fff}
+.cdrop-opt.sel:hover{background:var(--teal-dark)}
+.cdrop-sm .cdrop-btn{padding:8px 12px;font-size:13px}
+.cdrop-sm .cdrop-opt{padding:8px 12px;font-size:13px}
+
+/* ===== CALENDAR DROPDOWN (matches signup funnel) ===== */
+.cdrop-cal .cdrop-btn svg{width:16px;height:16px}
+.cdrop-cal .cal-panel{
+  padding:16px;width:280px;left:0;right:auto;
+  max-height:none;overflow:visible;
+}
+.cal-grid .cal-day.range-start{background:var(--teal);color:#fff;border-radius:6px 0 0 6px}
+.cal-grid .cal-day.range-end{background:var(--teal);color:#fff;border-radius:0 6px 6px 0}
+.cal-grid .cal-day.range-start.range-end{border-radius:6px}
+.cal-grid .cal-day.in-range{background:var(--teal-10);color:var(--teal);border-radius:0}
+.cal-grid .cal-day.in-range:hover{background:rgba(43,188,179,0.25)}
+.cal-grid .cal-day.range-start,.cal-grid .cal-day.range-end,.cal-grid .cal-day.in-range{transition:background .2s ease,color .2s ease,border-radius .2s ease}
+.cal-range-hint{font-size:11px;color:var(--text-light);text-align:center;margin-bottom:8px;transition:opacity .2s ease}
+.cal-range-hint.fade{animation:hintSwap .35s ease}
+@keyframes hintSwap{0%{opacity:1;transform:translateY(0)}40%{opacity:0;transform:translateY(-4px)}60%{opacity:0;transform:translateY(4px)}100%{opacity:1;transform:translateY(0)}}
+.cal-range-clear{display:block;margin:8px auto 0;background:none;border:none;font-family:inherit;font-size:11px;color:var(--text-light);cursor:pointer;padding:4px 8px;transition:var(--tr)}
+.cal-range-clear:hover{color:var(--error)}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-nav button{background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-mid);padding:4px 8px;border-radius:4px;font-family:inherit}
+.cal-nav button:hover{background:var(--bg);color:var(--teal)}
+.cal-mo{font-size:14px;font-weight:600;color:var(--text)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.cal-grid .cal-wk{font-size:11px;font-weight:600;color:var(--text-mid);padding:4px 0}
+.cal-grid .cal-day{font-size:13px;padding:7px 0;border-radius:6px;cursor:pointer;transition:var(--tr);color:var(--text)}
+.cal-grid .cal-day:hover{background:var(--teal-10);color:var(--teal)}
+.cal-grid .cal-day.today{border:1.5px solid var(--teal)}
+.cal-grid .cal-day.sel{background:var(--teal);color:#fff}
+.cal-grid .cal-day.other{color:var(--text-light);opacity:0.4;cursor:default;pointer-events:none}
+.if-actions{display:flex;gap:8px}
+
+/* ===== FILTERS BAR ===== */
+.filters{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+}
+/* filter-select removed — uses .cdrop .cdrop-sm instead */
+/* filter-input removed — date pickers now use .cdrop-cal */
+
+/* ===== EMPTY STATE ===== */
+.empty-state{
+  text-align:center;padding:48px 24px;color:var(--text-light);
+}
+.empty-state svg{width:48px;height:48px;margin-bottom:12px;opacity:0.4}
+.empty-state p{font-size:14px}
+
+/* ===== LOADING SPINNER ===== */
+.spinner{
+  display:inline-block;width:18px;height:18px;
+  border:2px solid rgba(255,255,255,0.3);
+  border-top-color:#fff;border-radius:50%;
+  animation:spin .6s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner-dark{
+  border-color:var(--border);
+  border-top-color:var(--teal);
+}
+.loading-row td{text-align:center;padding:32px;color:var(--text-light)}
+
+/* ===== CONFIRM DIALOG ===== */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.35);
+  display:flex;align-items:center;justify-content:center;
+  z-index:200;display:none;
+}
+.overlay.open{display:flex}
+.dialog{
+  background:var(--white);border-radius:var(--r);
+  padding:32px;width:90%;max-width:400px;
+  box-shadow:0 12px 40px rgba(0,0,0,0.12);
+  text-align:center;
+}
+.dialog h3{font-size:18px;font-weight:600;margin-bottom:8px}
+.dialog p{font-size:14px;color:var(--text-mid);margin-bottom:24px;line-height:1.6}
+.dialog-actions{display:flex;gap:10px;justify-content:center}
+.dialog-actions .btn-sm{min-width:100px;justify-content:center}
+
+/* ===== TOAST ===== */
+.toast{
+  position:fixed;bottom:24px;right:24px;
+  padding:14px 24px;border-radius:var(--r-sm);
+  font-family:inherit;font-size:14px;font-weight:500;
+  color:#fff;z-index:300;
+  transform:translateY(100px);opacity:0;
+  transition:all .3s ease;
+  box-shadow:0 8px 24px rgba(0,0,0,0.15);
+}
+.toast.show{transform:translateY(0);opacity:1}
+.toast-success{background:var(--success)}
+.toast-error{background:var(--error)}
+
+/* ===== MEETINGS TAB – UMAI STYLE ===== */
+#tab-meetings .mt-form-section{
+  margin-bottom:20px;
+}
+#tab-meetings .mt-form-section-title{
+  font-size:12px;font-weight:600;color:var(--text-mid);
+  text-transform:uppercase;letter-spacing:.4px;
+  margin-bottom:10px;display:block;
+}
+#tab-meetings .mt-chips{
+  display:flex;gap:8px;flex-wrap:wrap;
+}
+#tab-meetings .mt-chip{
+  display:flex;align-items:center;gap:6px;
+  padding:8px 16px;
+  border:1.5px solid var(--border-lt);
+  border-radius:var(--r-pill);
+  background:var(--white);
+  font-family:inherit;font-size:13px;font-weight:500;
+  color:var(--text);cursor:pointer;
+  transition:var(--tr);user-select:none;
+}
+#tab-meetings .mt-chip:hover{border-color:var(--teal);color:var(--teal)}
+#tab-meetings .mt-chip.on{
+  background:var(--teal-10);border-color:var(--teal);color:var(--teal);font-weight:600;
+}
+#tab-meetings .mt-chip input[type="checkbox"]{display:none}
+#tab-meetings .mt-chip-icon{
+  width:16px;height:16px;border-radius:4px;
+  border:1.5px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  transition:var(--tr);flex-shrink:0;
+}
+#tab-meetings .mt-chip.on .mt-chip-icon{
+  background:var(--teal);border-color:var(--teal);
+}
+#tab-meetings .mt-chip.on .mt-chip-icon svg{display:block}
+#tab-meetings .mt-chip .mt-chip-icon svg{display:none;width:10px;height:10px;color:#fff}
+
+/* Toggle switch for active */
+#tab-meetings .mt-toggle-row{
+  display:flex;align-items:center;gap:12px;
+}
+#tab-meetings .mt-toggle{
+  width:44px;height:24px;border-radius:12px;
+  background:var(--border);position:relative;
+  cursor:pointer;transition:var(--tr);flex-shrink:0;
+}
+#tab-meetings .mt-toggle.on{background:var(--teal)}
+#tab-meetings .mt-toggle-knob{
+  width:20px;height:20px;border-radius:50%;
+  background:#fff;position:absolute;top:2px;left:2px;
+  transition:var(--tr);box-shadow:0 1px 3px rgba(0,0,0,.12);
+}
+#tab-meetings .mt-toggle.on .mt-toggle-knob{left:22px}
+#tab-meetings .mt-toggle-label{
+  font-size:13px;font-weight:500;color:var(--text-mid);
+}
+
+/* Meeting type table card enhancements */
+#tab-meetings .mt-name-cell{
+  display:flex;flex-direction:column;gap:2px;
+}
+#tab-meetings .mt-name-cell strong{font-weight:600;font-size:14px}
+#tab-meetings .mt-name-cell .mt-key{font-size:11px;color:var(--text-light);font-weight:400}
+#tab-meetings .mt-plan-tags{display:flex;gap:4px;flex-wrap:wrap}
+#tab-meetings .mt-plan-tag{
+  padding:3px 10px;border-radius:var(--r-pill);
+  font-size:11px;font-weight:600;
+  background:var(--teal-10);color:var(--teal);
+  text-transform:capitalize;
+}
+#tab-meetings .mt-days-pills{display:flex;gap:3px;flex-wrap:wrap}
+#tab-meetings .mt-day-pill{
+  width:28px;height:28px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:600;
+  background:var(--card);color:var(--text-mid);
+  letter-spacing:0;
+}
+#tab-meetings .mt-day-pill.on{
+  background:var(--teal);color:#fff;
+}
+#tab-meetings .mt-duration-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:4px 12px;border-radius:var(--r-pill);
+  background:var(--card);font-size:12px;font-weight:600;
+  color:var(--text);
+}
+#tab-meetings .mt-duration-badge svg{width:14px;height:14px;color:var(--text-mid)}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:768px){
+  .hdr-in{padding:0 16px}
+  .hdr-title{font-size:16px}
+  .btn-logout{padding:6px 14px;font-size:12px}
+  .dash{padding:20px 16px 60px}
+  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{min-width:600px}
+  .tbl-bar{padding:16px;flex-wrap:wrap;gap:8px}
+  .tbl-bar h2{font-size:14px}
+  .inline-form{padding:16px}
+  .if-grid{grid-template-columns:1fr 1fr}
+  .if-actions{flex-wrap:wrap}
+  .login-card{padding:36px 24px}
+  table{font-size:13px}
+  thead th,tbody td{padding:10px 12px}
+  .tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;gap:0}
+  .tab-btn{padding:10px 14px;font-size:13px;white-space:nowrap;flex-shrink:0}
+  .filters{flex-direction:column;align-items:stretch}
+  .dialog{width:95%;max-width:360px}
+  .dialog-actions{flex-wrap:wrap}
+  .dialog-actions .btn-sm{flex:1;min-width:80px}
+  .toast{right:16px;left:16px;bottom:16px;text-align:center}
+  #tab-meetings .mt-chips{gap:6px}
+  #tab-meetings .mt-chip{padding:6px 12px;font-size:12px}
+  #tab-meetings .mt-day-pill{width:24px;height:24px;font-size:9px}
+  .cdrop-cal .cal-panel{width:260px}
+  .btn-sm{padding:7px 14px;font-size:12px}
+}
+@media(max-width:480px){
+  .hdr-in{padding:0 12px}
+  .dash{padding:16px 12px 50px}
+  .if-grid{grid-template-columns:1fr}
+  .tbl-bar{flex-direction:column;align-items:flex-start}
+  .dialog{padding:24px 20px}
+  .login-card{padding:28px 16px}
+  .login-card h1{font-size:20px}
+  .form-input{padding:12px 14px;font-size:14px}
+  .tabs{margin-bottom:20px}
+  .tab-btn{padding:8px 10px;font-size:12px}
+  #tab-meetings .mt-chips{gap:4px}
+  #tab-meetings .mt-chip{padding:5px 10px;font-size:11px}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN VIEW ===== -->
+<div id="loginView" class="login-wrap">
+  <div class="login-card">
+    <h1>Meetings <span>Admin</span></h1>
+    <p class="login-sub">Sign in to manage your scheduling system</p>
+    <div id="loginErr" class="login-err"></div>
+    <form id="loginForm" autocomplete="on">
+      <div class="form-group">
+        <label class="form-label" for="loginEmail">Email</label>
+        <input class="form-input" type="email" id="loginEmail" placeholder="admin@umai.io" required autocomplete="email">
+      </div>
+      <div class="form-group" id="loginPassGroup" style="display:none">
+        <label class="form-label" for="loginPass">Password</label>
+        <input class="form-input" type="password" id="loginPass" placeholder="Enter your password" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-teal" id="loginBtn">Continue</button>
+    </form>
+    <p class="forgot-link"><a href="#" id="forgotLink">Forgot your password?</a></p>
+  </div>
+</div>
+
+<!-- ===== SET PASSWORD VIEW (first login / reset) ===== -->
+<div id="setPwView" class="login-wrap" style="display:none">
+  <div class="login-card">
+    <h1>Meetings <span>Admin</span></h1>
+    <p class="login-sub" id="setPwSub">Create your password to get started</p>
+    <div id="setPwErr" class="login-err"></div>
+    <form id="setPwForm" autocomplete="off">
+      <div class="form-group">
+        <label class="form-label" for="newPw">New Password</label>
+        <input class="form-input" type="password" id="newPw" placeholder="At least 8 characters" required minlength="8" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="confirmPw">Confirm Password</label>
+        <input class="form-input" type="password" id="confirmPw" placeholder="Confirm your password" required minlength="8" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-teal" id="setPwBtn">Set Password</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== FORGOT PASSWORD VIEW ===== -->
+<div id="forgotView" class="login-wrap" style="display:none">
+  <div class="login-card">
+    <h1>Meetings <span>Admin</span></h1>
+    <p class="login-sub">Enter your email to receive a password reset link</p>
+    <div id="forgotErr" class="login-err"></div>
+    <div id="forgotSuccess" class="login-success"></div>
+    <form id="forgotForm" autocomplete="on">
+      <div class="form-group">
+        <label class="form-label" for="forgotEmail">Email</label>
+        <input class="form-input" type="email" id="forgotEmail" placeholder="your@email.com" required autocomplete="email">
+      </div>
+      <button type="submit" class="btn btn-teal" id="forgotBtn">Send Reset Link</button>
+    </form>
+    <p class="forgot-link"><a href="#" id="backToLogin">Back to login</a></p>
+  </div>
+</div>
+
+<!-- ===== DASHBOARD VIEW ===== -->
+<div id="dashView">
+  <!-- Header -->
+  <header class="hdr">
+    <div class="hdr-in">
+      <div class="hdr-title">Meetings <span>Admin</span></div>
+      <button class="btn-logout" id="logoutBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:middle"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Logout
+      </button>
+    </div>
+  </header>
+
+  <!-- Dashboard Content -->
+  <div class="dash">
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="bookings">Bookings</button>
+      <button class="tab-btn" data-tab="schedules">Schedules</button>
+      <button class="tab-btn" data-tab="blocked">Blocked Times</button>
+      <button class="tab-btn" data-tab="staff">Staff</button>
+      <button class="tab-btn" data-tab="meetings">Meetings</button>
+    </div>
+
+    <!-- ===== BOOKINGS TAB ===== -->
+    <div class="tab-panel active" id="tab-bookings">
+      <div class="tbl-wrap">
+        <div class="tbl-bar">
+          <h2>Bookings</h2>
+          <div class="filters">
+            <div class="cdrop cdrop-sm" id="filterStatus" data-value="" style="width:160px">
+              <button class="cdrop-btn" type="button" onclick="togDrop('filterStatus')"><span>All Statuses</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+              <div class="cdrop-list">
+                <div class="cdrop-opt sel" data-val="" onclick="selOpt('filterStatus',this)">All Statuses</div>
+                <div class="cdrop-opt" data-val="confirmed" onclick="selOpt('filterStatus',this)">Confirmed</div>
+                <div class="cdrop-opt" data-val="cancelled" onclick="selOpt('filterStatus',this)">Cancelled</div>
+                <div class="cdrop-opt" data-val="pending" onclick="selOpt('filterStatus',this)">Pending</div>
+                <div class="cdrop-opt" data-val="completed" onclick="selOpt('filterStatus',this)">Completed</div>
+              </div>
+            </div>
+            <div class="cdrop cdrop-sm cdrop-cal" id="filterDateRange" data-from="" data-to="" style="width:220px">
+              <button class="cdrop-btn" type="button" onclick="togRangeCal()"><span>Select dates</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>
+              <div class="cdrop-list cal-panel"></div>
+            </div>
+            <button class="btn-sm btn-sm-outline" id="filterApplyBtn">Apply</button>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Guest</th>
+              <th>Email</th>
+              <th>Venue</th>
+              <th>Date &amp; Time</th>
+              <th>Assigned To</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bookingsBody">
+            <tr class="loading-row"><td colspan="8"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>
+          </tbody>
+        </table>
+
+        <!-- Cancelled Bookings Compartment -->
+        <div class="cancelled-divider" id="cancelledToggle" style="display:none" onclick="toggleCancelled()">
+          <svg class="cancelled-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          <span class="cancelled-label">Cancelled</span>
+          <span class="cancelled-count" id="cancelledCount">0</span>
+        </div>
+        <table style="display:none" id="cancelledTable">
+          <thead>
+            <tr>
+              <th>Guest</th>
+              <th>Email</th>
+              <th>Venue</th>
+              <th>Date &amp; Time</th>
+              <th>Assigned To</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="cancelled-tbody" id="cancelledBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== SCHEDULES TAB ===== -->
+    <div class="tab-panel" id="tab-schedules">
+      <div class="tbl-wrap">
+        <div class="tbl-bar">
+          <h2>Weekly Schedules</h2>
+          <button class="btn-sm btn-sm-teal" id="addScheduleBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Schedule
+          </button>
+        </div>
+
+        <!-- Inline Add/Edit Form -->
+        <div class="inline-form" id="scheduleForm">
+          <div class="if-title" id="scheduleFormTitle">Add New Schedule</div>
+          <div class="if-grid">
+            <div class="if-group">
+              <label>Day of Week</label>
+              <div class="cdrop" id="sf-day" data-value="1">
+                <button class="cdrop-btn" type="button" onclick="togDrop('sf-day')"><span>Monday</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="cdrop-list">
+                  <div class="cdrop-opt" data-val="0" onclick="selOpt('sf-day',this)">Sunday</div>
+                  <div class="cdrop-opt sel" data-val="1" onclick="selOpt('sf-day',this)">Monday</div>
+                  <div class="cdrop-opt" data-val="2" onclick="selOpt('sf-day',this)">Tuesday</div>
+                  <div class="cdrop-opt" data-val="3" onclick="selOpt('sf-day',this)">Wednesday</div>
+                  <div class="cdrop-opt" data-val="4" onclick="selOpt('sf-day',this)">Thursday</div>
+                  <div class="cdrop-opt" data-val="5" onclick="selOpt('sf-day',this)">Friday</div>
+                  <div class="cdrop-opt" data-val="6" onclick="selOpt('sf-day',this)">Saturday</div>
+                </div>
+              </div>
+            </div>
+            <div class="if-group">
+              <label>Start Time</label>
+              <input class="if-input" type="time" id="sf-start" value="09:00">
+            </div>
+            <div class="if-group">
+              <label>End Time</label>
+              <input class="if-input" type="time" id="sf-end" value="17:00">
+            </div>
+            <div class="if-group">
+              <label>Duration (min)</label>
+              <input class="if-input" type="number" id="sf-duration" value="30" min="5" max="480">
+            </div>
+            <div class="if-group">
+              <label>Timezone</label>
+              <input class="if-input" type="text" id="sf-tz" placeholder="Asia/Tokyo">
+            </div>
+            <div class="if-group">
+              <label>Active</label>
+              <div class="cdrop" id="sf-active" data-value="true">
+                <button class="cdrop-btn" type="button" onclick="togDrop('sf-active')"><span>Yes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="cdrop-list">
+                  <div class="cdrop-opt sel" data-val="true" onclick="selOpt('sf-active',this)">Yes</div>
+                  <div class="cdrop-opt" data-val="false" onclick="selOpt('sf-active',this)">No</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="if-actions">
+            <button class="btn-sm btn-sm-teal" id="scheduleSubmitBtn">Save Schedule</button>
+            <button class="btn-sm btn-sm-outline" id="scheduleCancelBtn">Cancel</button>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Start</th>
+              <th>End</th>
+              <th>Duration</th>
+              <th>Timezone</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="schedulesBody">
+            <tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== BLOCKED TIMES TAB ===== -->
+    <div class="tab-panel" id="tab-blocked">
+      <div class="tbl-wrap">
+        <div class="tbl-bar">
+          <h2>Blocked Time Ranges</h2>
+          <button class="btn-sm btn-sm-teal" id="addBlockedBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Block Time
+          </button>
+        </div>
+
+        <!-- Inline Add Form -->
+        <div class="inline-form" id="blockedForm">
+          <div class="if-title">Block a Time Range</div>
+          <div class="if-grid">
+            <div class="if-group" style="grid-column:1/-1">
+              <label>Date Range</label>
+              <div class="cdrop cdrop-cal" id="bf-date-range" data-from="" data-to="">
+                <button class="cdrop-btn" type="button" onclick="togBlockedRangeCal()"><span>Select dates</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></button>
+                <div class="cdrop-list cal-panel"></div>
+              </div>
+            </div>
+            <div class="if-group">
+              <label>Start Time</label>
+              <input class="if-input" type="time" id="bf-start-time" value="09:00">
+            </div>
+            <div class="if-group">
+              <label>End Time</label>
+              <input class="if-input" type="time" id="bf-end-time" value="17:00">
+            </div>
+            <div class="if-group">
+              <label>Reason</label>
+              <input class="if-input" type="text" id="bf-reason" placeholder="e.g. Holiday, Maintenance">
+            </div>
+          </div>
+          <div class="if-actions">
+            <button class="btn-sm btn-sm-teal" id="blockedSubmitBtn">Block Time</button>
+            <button class="btn-sm btn-sm-outline" id="blockedCancelBtn">Cancel</button>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Start</th>
+              <th>End</th>
+              <th>Reason</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="blockedBody">
+            <tr class="loading-row"><td colspan="4"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== STAFF TAB ===== -->
+    <div class="tab-panel" id="tab-staff">
+      <div class="tbl-wrap">
+        <div class="tbl-bar">
+          <h2>Staff Members</h2>
+          <button class="btn-sm btn-sm-teal" id="addStaffBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Staff
+          </button>
+        </div>
+
+        <!-- Inline Add/Edit Form -->
+        <div class="inline-form" id="staffForm">
+          <div class="if-title" id="staffFormTitle">Add New Staff Member</div>
+          <div class="if-grid">
+            <div class="if-group">
+              <label>Name</label>
+              <input class="if-input" type="text" id="stf-name" placeholder="e.g. John Smith">
+            </div>
+            <div class="if-group">
+              <label>Email</label>
+              <input class="if-input" type="email" id="stf-email" placeholder="john@example.com">
+            </div>
+            <div class="if-group">
+              <label>Meeting %</label>
+              <input class="if-input" type="number" id="stf-pct" value="100" min="0" max="100">
+            </div>
+            <div class="if-group" id="stf-gcal-group" style="display:none">
+              <label>Google Calendar</label>
+              <div id="stf-gcal-info" style="font-size:13px;color:var(--text-mid);margin-bottom:6px">Save the staff member first, then connect.</div>
+              <button class="btn-sm btn-sm-teal" type="button" id="stf-gcal-connect" style="display:none" onclick="connectStaffGoogle()">Connect Google Calendar</button>
+              <button class="btn-sm btn-sm-danger" type="button" id="stf-gcal-disconnect" style="display:none" onclick="disconnectStaffGoogle()">Disconnect</button>
+              <input type="hidden" id="stf-gcal" value="">
+            </div>
+            <div class="if-group">
+              <label>Active</label>
+              <div class="cdrop" id="stf-active" data-value="true">
+                <button class="cdrop-btn" type="button" onclick="togDrop('stf-active')"><span>Yes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                <div class="cdrop-list">
+                  <div class="cdrop-opt sel" data-val="true" onclick="selOpt('stf-active',this)">Yes</div>
+                  <div class="cdrop-opt" data-val="false" onclick="selOpt('stf-active',this)">No</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="if-actions">
+            <button class="btn-sm btn-sm-teal" id="staffSubmitBtn">Save Staff</button>
+            <button class="btn-sm btn-sm-outline" id="staffCancelBtn">Cancel</button>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Meeting %</th>
+              <th>Calendar</th>
+              <th>Onboarding</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="staffBody">
+            <tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ===== MEETINGS TAB ===== -->
+    <div class="tab-panel" id="tab-meetings">
+      <div class="tbl-wrap">
+        <div class="tbl-bar">
+          <h2>Meeting Types</h2>
+          <button class="btn-sm btn-sm-teal" id="addMtypeBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Meeting Type
+          </button>
+        </div>
+
+        <!-- Inline Add/Edit Form -->
+        <div class="inline-form" id="mtypeForm">
+          <div class="if-title" id="mtypeFormTitle">Add Meeting Type</div>
+          <div class="if-grid">
+            <div class="if-group">
+              <label>Name (key)</label>
+              <input class="if-input" type="text" id="mt-name" placeholder="e.g. online">
+            </div>
+            <div class="if-group">
+              <label>Label</label>
+              <input class="if-input" type="text" id="mt-label" placeholder="e.g. Online">
+            </div>
+            <div class="if-group">
+              <label>Duration (min)</label>
+              <input class="if-input" type="number" id="mt-duration" value="120" min="15" max="480">
+            </div>
+            <div class="if-group">
+              <label>Active</label>
+              <div class="mt-toggle-row">
+                <div class="mt-toggle on" id="mt-active-toggle" onclick="toggleMtActive()">
+                  <div class="mt-toggle-knob"></div>
+                </div>
+                <span class="mt-toggle-label" id="mt-active-label">Active</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-form-section">
+            <span class="mt-form-section-title">Plans</span>
+            <div class="mt-chips" id="mt-plans">
+              <label class="mt-chip" onclick="toggleMtChip(this, event)">
+                <span class="mt-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                <input type="checkbox" value="mini">Mini
+              </label>
+              <label class="mt-chip" onclick="toggleMtChip(this, event)">
+                <span class="mt-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                <input type="checkbox" value="essencial">Essential
+              </label>
+              <label class="mt-chip" onclick="toggleMtChip(this, event)">
+                <span class="mt-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                <input type="checkbox" value="pro">Pro
+              </label>
+              <label class="mt-chip" onclick="toggleMtChip(this, event)">
+                <span class="mt-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                <input type="checkbox" value="proplus">Pro+
+              </label>
+            </div>
+          </div>
+
+          <div class="mt-form-section">
+            <span class="mt-form-section-title">Day Availability</span>
+            <div class="mt-chips" id="mt-days">
+              <label class="mt-chip" onclick="toggleMtChip(this, event)">
+                <input type="checkbox" data-day="0">Sun
+              </label>
+              <label class="mt-chip on" onclick="toggleMtChip(this, event)">
+                <input type="checkbox" data-day="1" checked>Mon
+              </label>
+              <label class="mt-chip on" onclick="toggleMtChip(this, event)">
+                <input type="checkbox" data-day="2" checked>Tue
+              </label>
+              <label class="mt-chip on" onclick="toggleMtChip(this, event)">
+                <input type="checkbox" data-day="3" checked>Wed
+              </label>
+              <label class="mt-chip on" onclick="toggleMtChip(this, event)">
+                <input type="checkbox" data-day="4" checked>Thu
+              </label>
+              <label class="mt-chip on" onclick="toggleMtChip(this, event)">
+                <input type="checkbox" data-day="5" checked>Fri
+              </label>
+              <label class="mt-chip" onclick="toggleMtChip(this, event)">
+                <input type="checkbox" data-day="6">Sat
+              </label>
+            </div>
+          </div>
+
+          <div class="if-actions" style="margin-top:16px">
+            <button class="btn-sm btn-sm-teal" id="mtypeSubmitBtn">Save</button>
+            <button class="btn-sm btn-sm-outline" id="mtypeCancelBtn">Cancel</button>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Meeting Type</th>
+              <th>Duration</th>
+              <th>Plans</th>
+              <th>Availability</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="mtypeBody">
+            <tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== CONFIRM DIALOG ===== -->
+<div class="overlay" id="confirmOverlay">
+  <div class="dialog">
+    <h3 id="confirmTitle">Confirm Action</h3>
+    <p id="confirmMsg">Are you sure you want to proceed?</p>
+    <div class="dialog-actions">
+      <button class="btn-sm btn-sm-outline" id="confirmNo">Cancel</button>
+      <button class="btn-sm btn-sm-danger" id="confirmYes">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================================================================
+   MEETINGS ADMIN PANEL
+   ================================================================ */
+const API_BASE = window.UMAI_API_BASE || window.location.origin;
+const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+/* ---------- DOM refs ---------- */
+const $  = (s, p) => (p || document).querySelector(s);
+const $$ = (s, p) => [...(p || document).querySelectorAll(s)];
+
+const loginView      = $('#loginView');
+const dashView       = $('#dashView');
+const loginForm      = $('#loginForm');
+const loginEmail     = $('#loginEmail');
+const loginPass      = $('#loginPass');
+const loginErr       = $('#loginErr');
+const loginBtn       = $('#loginBtn');
+const logoutBtn      = $('#logoutBtn');
+const setPwView      = $('#setPwView');
+const setPwForm      = $('#setPwForm');
+const setPwErr       = $('#setPwErr');
+const setPwSub       = $('#setPwSub');
+const setPwBtn       = $('#setPwBtn');
+const newPw          = $('#newPw');
+const confirmPw      = $('#confirmPw');
+const forgotView     = $('#forgotView');
+const forgotForm     = $('#forgotForm');
+const forgotEmail    = $('#forgotEmail');
+const forgotErr      = $('#forgotErr');
+const forgotSuccess  = $('#forgotSuccess');
+const forgotBtn      = $('#forgotBtn');
+const forgotLink     = $('#forgotLink');
+const backToLogin    = $('#backToLogin');
+let setPwToken       = null;   // JWT or reset token for set-password flow
+let setPwIsReset     = false;  // true when using a forgot-password reset token
+const toast          = $('#toast');
+const confirmOverlay = $('#confirmOverlay');
+const confirmTitle   = $('#confirmTitle');
+const confirmMsg     = $('#confirmMsg');
+const confirmYes     = $('#confirmYes');
+const confirmNo      = $('#confirmNo');
+
+/* ---------- Case conversion helpers ---------- */
+function snakeToCamel(s) { return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase()); }
+function camelToSnake(s) { return s.replace(/[A-Z]/g, c => '_' + c.toLowerCase()); }
+function keysToCamel(obj) {
+  if (Array.isArray(obj)) return obj.map(keysToCamel);
+  if (obj !== null && typeof obj === 'object' && !(obj instanceof Date)) {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [snakeToCamel(k), keysToCamel(v)]));
+  }
+  return obj;
+}
+function keysToSnake(obj) {
+  if (Array.isArray(obj)) return obj.map(keysToSnake);
+  if (obj !== null && typeof obj === 'object' && !(obj instanceof Date)) {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [camelToSnake(k), keysToSnake(v)]));
+  }
+  return obj;
+}
+
+/* ---------- Auth helpers ---------- */
+function getToken() { return localStorage.getItem('umai_admin_token'); }
+function setToken(t) { localStorage.setItem('umai_admin_token', t); }
+function clearToken() { localStorage.removeItem('umai_admin_token'); }
+
+function getTokenRole() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.role || 'restricted';
+  } catch { return 'restricted'; }
+}
+
+async function apiFetch(path, opts = {}) {
+  const token = getToken();
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  // Convert outgoing body keys to snake_case
+  if (opts.body && typeof opts.body === 'string') {
+    try { opts.body = JSON.stringify(keysToSnake(JSON.parse(opts.body))); } catch(e) {}
+  }
+  const res = await fetch(API_BASE + path, { ...opts, headers });
+  if (res.status === 401 && !path.includes('/auth/login')) {
+    clearToken();
+    showLogin();
+    throw new Error('Unauthorized');
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || body.error || 'Request failed');
+  }
+  if (res.status === 204) return null;
+  // Convert incoming response keys to camelCase
+  const data = await res.json();
+  return keysToCamel(data);
+}
+
+/* ---------- View toggling ---------- */
+function hideAllViews() {
+  loginView.style.display = 'none';
+  dashView.style.display = 'none';
+  setPwView.style.display = 'none';
+  forgotView.style.display = 'none';
+}
+
+function showLogin() {
+  hideAllViews();
+  loginView.style.display = 'flex';
+  loginErr.classList.remove('show');
+  loginForm.reset();
+  loginStep = 'email';
+  document.getElementById('loginPassGroup').style.display = 'none';
+  loginBtn.textContent = 'Continue';
+}
+
+function showDash() {
+  hideAllViews();
+  dashView.style.display = 'block';
+
+  // Role-based tab visibility
+  const role = getTokenRole();
+  const staffBtn = document.querySelector('.tab-btn[data-tab="staff"]');
+  const staffPanel = document.getElementById('tab-staff');
+  if (role !== 'admin') {
+    staffBtn.style.display = 'none';
+    staffPanel.style.display = 'none';
+  } else {
+    staffBtn.style.display = '';
+    staffPanel.style.display = '';
+    loadStaff();
+  }
+
+  loadSchedules();
+  loadBlocked();
+  loadBookings();
+  loadMeetingTypes();
+}
+
+function showSetPw(token, isReset) {
+  hideAllViews();
+  setPwView.style.display = 'flex';
+  setPwErr.classList.remove('show');
+  setPwForm.reset();
+  setPwToken = token;
+  setPwIsReset = !!isReset;
+  setPwSub.textContent = isReset ? 'Enter your new password' : 'Create your password to get started';
+}
+
+function showForgot() {
+  hideAllViews();
+  forgotView.style.display = 'flex';
+  forgotErr.classList.remove('show');
+  forgotSuccess.classList.remove('show');
+  forgotForm.reset();
+}
+
+/* ---------- Toast ---------- */
+let toastTimer;
+function showToast(msg, type = 'success') {
+  clearTimeout(toastTimer);
+  toast.textContent = msg;
+  toast.className = 'toast toast-' + type + ' show';
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+/* ---------- Confirm dialog ---------- */
+let confirmResolve;
+function confirm(title, msg) {
+  confirmTitle.textContent = title;
+  confirmMsg.textContent = msg;
+  confirmOverlay.classList.add('open');
+  return new Promise(resolve => { confirmResolve = resolve; });
+}
+confirmYes.onclick = () => { confirmOverlay.classList.remove('open'); confirmResolve(true); };
+confirmNo.onclick  = () => { confirmOverlay.classList.remove('open'); confirmResolve(false); };
+confirmOverlay.addEventListener('click', e => {
+  if (e.target === confirmOverlay) { confirmOverlay.classList.remove('open'); confirmResolve(false); }
+});
+
+/* ---------- Date formatting ---------- */
+function fmtDate(d) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
+}
+function fmtDateTime(d) {
+  if (!d) return '-';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' })
+    + ' ' + dt.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+}
+function fmtTime(t) {
+  if (!t) return '-';
+  const [h, m] = t.split(':');
+  const hr = parseInt(h, 10);
+  const ampm = hr >= 12 ? 'PM' : 'AM';
+  const hr12 = hr % 12 || 12;
+  return hr12 + ':' + m + ' ' + ampm;
+}
+
+/* ---------- Custom dropdown helpers ---------- */
+function togDrop(id) {
+  const el = document.getElementById(id);
+  const wasOpen = el.classList.contains('open');
+  // Close all other dropdowns
+  document.querySelectorAll('.cdrop.open').forEach(d => d.classList.remove('open'));
+  if (!wasOpen) el.classList.add('open');
+}
+function selOpt(id, opt) {
+  const el = document.getElementById(id);
+  el.dataset.value = opt.dataset.val;
+  el.querySelector('.cdrop-btn span').textContent = opt.textContent;
+  el.querySelectorAll('.cdrop-opt').forEach(o => o.classList.remove('sel'));
+  opt.classList.add('sel');
+  el.classList.remove('open');
+}
+function setDrop(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.dataset.value = String(val);
+  const opt = el.querySelector(`.cdrop-opt[data-val="${val}"]`);
+  if (opt) {
+    el.querySelector('.cdrop-btn span').textContent = opt.textContent;
+    el.querySelectorAll('.cdrop-opt').forEach(o => o.classList.remove('sel'));
+    opt.classList.add('sel');
+  }
+}
+function getDrop(id) {
+  const el = document.getElementById(id);
+  return el ? el.dataset.value : '';
+}
+// Close dropdowns on outside click
+document.addEventListener('click', e => {
+  // If the target was removed from DOM (e.g. calendar re-render), don't close
+  if (!e.target.isConnected) return;
+  if (!e.target.closest('.cdrop')) {
+    document.querySelectorAll('.cdrop.open').forEach(d => d.classList.remove('open'));
+  }
+});
+
+/* ---------- Calendar dropdown helpers ---------- */
+const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CAL_WK = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+const calState = {}; // id -> { year, month }
+
+function togCal(id) {
+  const el = document.getElementById(id);
+  const wasOpen = el.classList.contains('open');
+  document.querySelectorAll('.cdrop.open').forEach(d => d.classList.remove('open'));
+  if (!wasOpen) {
+    const val = el.dataset.value;
+    const now = new Date();
+    if (val) {
+      const d = new Date(val);
+      calState[id] = { year: d.getFullYear(), month: d.getMonth() };
+    } else if (!calState[id]) {
+      calState[id] = { year: now.getFullYear(), month: now.getMonth() };
+    }
+    renderCal(id);
+    el.classList.add('open');
+  }
+}
+
+function calNav(id, dir) {
+  const s = calState[id];
+  s.month += dir;
+  if (s.month > 11) { s.month = 0; s.year++; }
+  if (s.month < 0) { s.month = 11; s.year--; }
+  renderCal(id);
+}
+
+function renderCal(id) {
+  const el = document.getElementById(id);
+  const panel = el.querySelector('.cal-panel');
+  const s = calState[id];
+  const today = new Date(); today.setHours(0,0,0,0);
+  const selVal = el.dataset.value;
+  const selDate = selVal ? new Date(selVal + 'T00:00:00') : null;
+
+  const firstDay = new Date(s.year, s.month, 1).getDay();
+  const daysInMonth = new Date(s.year, s.month + 1, 0).getDate();
+
+  let html = '<div class="cal-nav">';
+  html += '<button type="button" onclick="calNav(\'' + id + '\',-1)">&#8249;</button>';
+  html += '<span class="cal-mo">' + CAL_MONTHS[s.month] + ' ' + s.year + '</span>';
+  html += '<button type="button" onclick="calNav(\'' + id + '\',1)">&#8250;</button>';
+  html += '</div><div class="cal-grid">';
+
+  CAL_WK.forEach(d => { html += '<div class="cal-wk">' + d + '</div>'; });
+
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="cal-day other"></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(s.year, s.month, d);
+    let cls = 'cal-day';
+    if (dt.getTime() === today.getTime()) cls += ' today';
+    if (selDate && dt.getTime() === selDate.getTime()) cls += ' sel';
+    const dateStr = s.year + '-' + String(s.month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    html += '<div class="' + cls + '" onclick="selCalDay(\'' + id + '\',\'' + dateStr + '\')">' + d + '</div>';
+  }
+
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+function selCalDay(id, dateStr) {
+  const el = document.getElementById(id);
+  el.dataset.value = dateStr;
+  const dt = new Date(dateStr + 'T00:00:00');
+  const label = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  el.querySelector('.cdrop-btn span').textContent = label;
+  el.classList.remove('open');
+}
+
+function clearCal(id, placeholder) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.dataset.value = '';
+  el.querySelector('.cdrop-btn span').textContent = placeholder || 'Select date';
+}
+
+/* ---------- Blocked-dates range calendar ---------- */
+const blockedRangeState = { year: 0, month: 0 };
+
+function togBlockedRangeCal() {
+  const el = document.getElementById('bf-date-range');
+  const wasOpen = el.classList.contains('open');
+  document.querySelectorAll('.cdrop.open').forEach(d => d.classList.remove('open'));
+  if (!wasOpen) {
+    const from = el.dataset.from;
+    const now = new Date();
+    if (from) {
+      const d = new Date(from);
+      blockedRangeState.year = d.getFullYear(); blockedRangeState.month = d.getMonth();
+    } else if (!blockedRangeState.year) {
+      blockedRangeState.year = now.getFullYear(); blockedRangeState.month = now.getMonth();
+    }
+    renderBlockedRangeCal();
+    el.classList.add('open');
+  }
+}
+
+function blockedRangeCalNav(dir) {
+  blockedRangeState.month += dir;
+  if (blockedRangeState.month > 11) { blockedRangeState.month = 0; blockedRangeState.year++; }
+  if (blockedRangeState.month < 0) { blockedRangeState.month = 11; blockedRangeState.year--; }
+  renderBlockedRangeCal();
+}
+
+function renderBlockedRangeCal() {
+  const el = document.getElementById('bf-date-range');
+  const panel = el.querySelector('.cal-panel');
+  const s = blockedRangeState;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const fromStr = el.dataset.from;
+  const toStr = el.dataset.to;
+  const fromDate = fromStr ? new Date(fromStr + 'T00:00:00') : null;
+  const toDate = toStr ? new Date(toStr + 'T00:00:00') : null;
+
+  const firstDay = new Date(s.year, s.month, 1).getDay();
+  const daysInMonth = new Date(s.year, s.month + 1, 0).getDate();
+
+  const picking = fromDate && !toDate ? 'end' : 'start';
+  let html = '<div class="cal-range-hint">' + (picking === 'start' ? 'Select start date' : 'Select end date') + '</div>';
+  html += '<div class="cal-nav">';
+  html += '<button type="button" onclick="blockedRangeCalNav(-1)">&#8249;</button>';
+  html += '<span class="cal-mo">' + CAL_MONTHS[s.month] + ' ' + s.year + '</span>';
+  html += '<button type="button" onclick="blockedRangeCalNav(1)">&#8250;</button>';
+  html += '</div><div class="cal-grid">';
+
+  CAL_WK.forEach(d => { html += '<div class="cal-wk">' + d + '</div>'; });
+
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="cal-day other"></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(s.year, s.month, d);
+    const t = dt.getTime();
+    let cls = 'cal-day';
+    if (t === today.getTime()) cls += ' today';
+    if (fromDate && t === fromDate.getTime()) cls += ' range-start';
+    if (toDate && t === toDate.getTime()) cls += ' range-end';
+    if (fromDate && toDate && t > fromDate.getTime() && t < toDate.getTime()) cls += ' in-range';
+    const dateStr = s.year + '-' + String(s.month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    html += '<div class="' + cls + '" onclick="selBlockedRangeDay(\'' + dateStr + '\')">' + d + '</div>';
+  }
+
+  html += '</div>';
+  if (fromDate || toDate) {
+    html += '<button type="button" class="cal-range-clear" onclick="clearBlockedRangeCal()">Clear dates</button>';
+  }
+  panel.innerHTML = html;
+}
+
+function selBlockedRangeDay(dateStr) {
+  const el = document.getElementById('bf-date-range');
+  const fromStr = el.dataset.from;
+  const toStr = el.dataset.to;
+  const clicked = new Date(dateStr + 'T00:00:00');
+
+  if (!fromStr || toStr) {
+    el.dataset.from = dateStr;
+    el.dataset.to = '';
+    renderBlockedRangeCal();
+    const hint = el.querySelector('.cal-range-hint');
+    if (hint) { hint.classList.remove('fade'); void hint.offsetWidth; hint.classList.add('fade'); }
+  } else {
+    const fromDate = new Date(fromStr + 'T00:00:00');
+    if (clicked.getTime() < fromDate.getTime()) {
+      el.dataset.from = dateStr;
+      el.dataset.to = fromStr;
+    } else {
+      el.dataset.to = dateStr;
+    }
+    renderBlockedRangeCal();
+    updateBlockedRangeLabel();
+    setTimeout(function() { el.classList.remove('open'); }, 350);
+  }
+}
+
+function updateBlockedRangeLabel() {
+  const el = document.getElementById('bf-date-range');
+  const fromStr = el.dataset.from;
+  const toStr = el.dataset.to;
+  const opts = { month: 'short', day: 'numeric' };
+  if (fromStr && toStr) {
+    const f = new Date(fromStr + 'T00:00:00').toLocaleDateString('en-US', opts);
+    const t = new Date(toStr + 'T00:00:00').toLocaleDateString('en-US', opts);
+    el.querySelector('.cdrop-btn span').textContent = f + ' – ' + t;
+  } else if (fromStr) {
+    const f = new Date(fromStr + 'T00:00:00').toLocaleDateString('en-US', opts);
+    el.querySelector('.cdrop-btn span').textContent = f + ' – …';
+  } else {
+    el.querySelector('.cdrop-btn span').textContent = 'Select dates';
+  }
+}
+
+function clearBlockedRangeCal() {
+  const el = document.getElementById('bf-date-range');
+  el.dataset.from = '';
+  el.dataset.to = '';
+  el.querySelector('.cdrop-btn span').textContent = 'Select dates';
+  renderBlockedRangeCal();
+}
+
+/* ---------- Date-range calendar (bookings filter) ---------- */
+const rangeState = { year: 0, month: 0 };
+
+function togRangeCal() {
+  const el = document.getElementById('filterDateRange');
+  const wasOpen = el.classList.contains('open');
+  document.querySelectorAll('.cdrop.open').forEach(d => d.classList.remove('open'));
+  if (!wasOpen) {
+    const from = el.dataset.from;
+    const now = new Date();
+    if (from) {
+      const d = new Date(from);
+      rangeState.year = d.getFullYear(); rangeState.month = d.getMonth();
+    } else if (!rangeState.year) {
+      rangeState.year = now.getFullYear(); rangeState.month = now.getMonth();
+    }
+    renderRangeCal();
+    el.classList.add('open');
+  }
+}
+
+function rangeCalNav(dir) {
+  rangeState.month += dir;
+  if (rangeState.month > 11) { rangeState.month = 0; rangeState.year++; }
+  if (rangeState.month < 0) { rangeState.month = 11; rangeState.year--; }
+  renderRangeCal();
+}
+
+function renderRangeCal() {
+  const el = document.getElementById('filterDateRange');
+  const panel = el.querySelector('.cal-panel');
+  const s = rangeState;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const fromStr = el.dataset.from;
+  const toStr = el.dataset.to;
+  const fromDate = fromStr ? new Date(fromStr + 'T00:00:00') : null;
+  const toDate = toStr ? new Date(toStr + 'T00:00:00') : null;
+
+  const firstDay = new Date(s.year, s.month, 1).getDay();
+  const daysInMonth = new Date(s.year, s.month + 1, 0).getDate();
+
+  const picking = fromDate && !toDate ? 'end' : 'start';
+  let html = '<div class="cal-range-hint">' + (picking === 'start' ? 'Select start date' : 'Select end date') + '</div>';
+  html += '<div class="cal-nav">';
+  html += '<button type="button" onclick="rangeCalNav(-1)">&#8249;</button>';
+  html += '<span class="cal-mo">' + CAL_MONTHS[s.month] + ' ' + s.year + '</span>';
+  html += '<button type="button" onclick="rangeCalNav(1)">&#8250;</button>';
+  html += '</div><div class="cal-grid">';
+
+  CAL_WK.forEach(d => { html += '<div class="cal-wk">' + d + '</div>'; });
+
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="cal-day other"></div>';
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(s.year, s.month, d);
+    const t = dt.getTime();
+    let cls = 'cal-day';
+    if (t === today.getTime()) cls += ' today';
+    if (fromDate && t === fromDate.getTime()) cls += ' range-start';
+    if (toDate && t === toDate.getTime()) cls += ' range-end';
+    if (fromDate && toDate && t > fromDate.getTime() && t < toDate.getTime()) cls += ' in-range';
+    const dateStr = s.year + '-' + String(s.month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    html += '<div class="' + cls + '" onclick="selRangeDay(\'' + dateStr + '\')">' + d + '</div>';
+  }
+
+  html += '</div>';
+  if (fromDate || toDate) {
+    html += '<button type="button" class="cal-range-clear" onclick="clearRangeCal()">Clear dates</button>';
+  }
+  panel.innerHTML = html;
+}
+
+function selRangeDay(dateStr) {
+  const el = document.getElementById('filterDateRange');
+  const fromStr = el.dataset.from;
+  const toStr = el.dataset.to;
+  const clicked = new Date(dateStr + 'T00:00:00');
+
+  if (!fromStr || toStr) {
+    // First click (or resetting): set as start date
+    el.dataset.from = dateStr;
+    el.dataset.to = '';
+    renderRangeCal();
+    // Animate hint swap
+    const hint = el.querySelector('.cal-range-hint');
+    if (hint) { hint.classList.remove('fade'); void hint.offsetWidth; hint.classList.add('fade'); }
+  } else {
+    // Second click: set as end date
+    const fromDate = new Date(fromStr + 'T00:00:00');
+    if (clicked.getTime() < fromDate.getTime()) {
+      el.dataset.from = dateStr;
+      el.dataset.to = fromStr;
+    } else {
+      el.dataset.to = dateStr;
+    }
+    // Render range highlight first, then close after a short delay
+    renderRangeCal();
+    updateRangeLabel();
+    setTimeout(function() { el.classList.remove('open'); }, 350);
+  }
+}
+
+function updateRangeLabel() {
+  const el = document.getElementById('filterDateRange');
+  const fromStr = el.dataset.from;
+  const toStr = el.dataset.to;
+  const opts = { month: 'short', day: 'numeric' };
+  if (fromStr && toStr) {
+    const f = new Date(fromStr + 'T00:00:00').toLocaleDateString('en-US', opts);
+    const t = new Date(toStr + 'T00:00:00').toLocaleDateString('en-US', opts);
+    el.querySelector('.cdrop-btn span').textContent = f + ' – ' + t;
+  } else if (fromStr) {
+    const f = new Date(fromStr + 'T00:00:00').toLocaleDateString('en-US', opts);
+    el.querySelector('.cdrop-btn span').textContent = f + ' – …';
+  } else {
+    el.querySelector('.cdrop-btn span').textContent = 'Select dates';
+  }
+}
+
+function clearRangeCal() {
+  const el = document.getElementById('filterDateRange');
+  el.dataset.from = '';
+  el.dataset.to = '';
+  el.querySelector('.cdrop-btn span').textContent = 'Select dates';
+  renderRangeCal();
+}
+
+/* ================================================================
+   LOGIN
+   ================================================================ */
+let loginStep = 'email'; // 'email' or 'password'
+
+loginForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  loginErr.classList.remove('show');
+  loginBtn.disabled = true;
+  loginBtn.innerHTML = '<div class="spinner"></div>';
+  try {
+    if (loginStep === 'email') {
+      // Step 1: submit only email to check account status
+      const data = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: loginEmail.value.trim() })
+      });
+      if (data.mustSetPassword) {
+        // First-time login — redirect to set password
+        showSetPw(data.token, false);
+      } else {
+        setToken(data.token);
+        showDash();
+      }
+    } else {
+      // Step 2: submit email + password
+      const data = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: loginEmail.value.trim(), password: loginPass.value })
+      });
+      setToken(data.token);
+      showDash();
+    }
+  } catch (err) {
+    const msg = err.message || 'Login failed. Please try again.';
+    if (msg === 'Password is required') {
+      // User has a password set — show password field
+      loginStep = 'password';
+      document.getElementById('loginPassGroup').style.display = '';
+      loginPass.focus();
+      loginBtn.textContent = 'Sign In';
+      loginBtn.disabled = false;
+      return;
+    }
+    loginErr.textContent = msg;
+    loginErr.classList.add('show');
+  } finally {
+    loginBtn.disabled = false;
+    if (loginStep === 'email') loginBtn.textContent = 'Continue';
+    else loginBtn.textContent = 'Sign In';
+  }
+});
+
+/* ================================================================
+   SET PASSWORD
+   ================================================================ */
+setPwForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  setPwErr.classList.remove('show');
+
+  if (newPw.value.length < 8) {
+    setPwErr.textContent = 'Password must be at least 8 characters';
+    setPwErr.classList.add('show');
+    return;
+  }
+  if (newPw.value !== confirmPw.value) {
+    setPwErr.textContent = 'Passwords do not match';
+    setPwErr.classList.add('show');
+    return;
+  }
+
+  setPwBtn.disabled = true;
+  setPwBtn.innerHTML = '<div class="spinner"></div>';
+  try {
+    const body = setPwIsReset
+      ? { password: newPw.value, token: setPwToken }
+      : { password: newPw.value };
+
+    const opts = { method: 'POST', body: JSON.stringify(body) };
+    if (!setPwIsReset) {
+      opts.headers = { 'Authorization': 'Bearer ' + setPwToken };
+    }
+
+    const data = await apiFetch('/api/auth/set-password', opts);
+    setToken(data.token);
+    showToast('Password set successfully');
+    showDash();
+  } catch (err) {
+    setPwErr.textContent = err.message || 'Failed to set password. Please try again.';
+    setPwErr.classList.add('show');
+  } finally {
+    setPwBtn.disabled = false;
+    setPwBtn.textContent = 'Set Password';
+  }
+});
+
+/* ================================================================
+   FORGOT PASSWORD
+   ================================================================ */
+forgotLink.addEventListener('click', e => {
+  e.preventDefault();
+  showForgot();
+});
+
+backToLogin.addEventListener('click', e => {
+  e.preventDefault();
+  showLogin();
+});
+
+forgotForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  forgotErr.classList.remove('show');
+  forgotSuccess.classList.remove('show');
+  forgotBtn.disabled = true;
+  forgotBtn.innerHTML = '<div class="spinner"></div>';
+  try {
+    await apiFetch('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email: forgotEmail.value.trim() })
+    });
+    forgotSuccess.textContent = 'If that email exists, a reset link has been sent. Check your inbox.';
+    forgotSuccess.classList.add('show');
+  } catch (err) {
+    forgotErr.textContent = err.message || 'Something went wrong. Please try again.';
+    forgotErr.classList.add('show');
+  } finally {
+    forgotBtn.disabled = false;
+    forgotBtn.textContent = 'Send Reset Link';
+  }
+});
+
+/* ================================================================
+   LOGOUT
+   ================================================================ */
+logoutBtn.addEventListener('click', () => {
+  clearToken();
+  showLogin();
+  showToast('Logged out successfully');
+});
+
+/* ================================================================
+   TABS
+   ================================================================ */
+$$('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    $$('.tab-btn').forEach(b => b.classList.remove('active'));
+    $$('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    $('#tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ================================================================
+   SCHEDULES
+   ================================================================ */
+let schedules = [];
+let editingScheduleId = null;
+
+const schedulesBody    = $('#schedulesBody');
+const scheduleForm     = $('#scheduleForm');
+const scheduleFormTitle = $('#scheduleFormTitle');
+const addScheduleBtn   = $('#addScheduleBtn');
+const scheduleSubmitBtn = $('#scheduleSubmitBtn');
+const scheduleCancelBtn = $('#scheduleCancelBtn');
+
+async function loadSchedules() {
+  schedulesBody.innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>';
+  try {
+    schedules = await apiFetch('/api/admin/schedules');
+    renderSchedules();
+  } catch (err) {
+    schedulesBody.innerHTML = '<tr><td colspan="7" class="empty-state"><p>Failed to load schedules</p></td></tr>';
+  }
+}
+
+function renderSchedules() {
+  if (!schedules || schedules.length === 0) {
+    schedulesBody.innerHTML = `
+      <tr><td colspan="8">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <p>No schedules yet. Click "Add Schedule" to create one.</p>
+        </div>
+      </td></tr>`;
+    return;
+  }
+  schedulesBody.innerHTML = schedules.map(s => `
+    <tr>
+      <td><strong>${DAY_NAMES[s.dayOfWeek] || s.dayOfWeek}</strong></td>
+      <td>${fmtTime(s.startTime)}</td>
+      <td>${fmtTime(s.endTime)}</td>
+      <td>${s.slotDuration || s.duration || '-'} min</td>
+      <td>${s.timezone || '-'}</td>
+      <td><span class="badge ${s.isActive || s.active ? 'badge-active' : 'badge-inactive'}">${s.isActive || s.active ? 'Active' : 'Inactive'}</span></td>
+      <td style="text-align:right">
+        <button class="btn-sm btn-sm-outline" onclick="editSchedule('${s._id || s.id}')">Edit</button>
+        <button class="btn-sm btn-sm-danger" onclick="deleteSchedule('${s._id || s.id}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+addScheduleBtn.addEventListener('click', () => {
+  editingScheduleId = null;
+  scheduleFormTitle.textContent = 'Add New Schedule';
+  scheduleSubmitBtn.textContent = 'Save Schedule';
+  setDrop('sf-day', '1');
+  $('#sf-start').value = '09:00';
+  $('#sf-end').value = '17:00';
+  $('#sf-duration').value = '30';
+  $('#sf-tz').value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  setDrop('sf-active', 'true');
+  scheduleForm.classList.add('open');
+});
+
+scheduleCancelBtn.addEventListener('click', () => {
+  scheduleForm.classList.remove('open');
+  editingScheduleId = null;
+});
+
+window.editSchedule = function(id) {
+  const s = schedules.find(x => String(x._id || x.id) === String(id));
+  if (!s) return;
+  editingScheduleId = String(id);
+  scheduleFormTitle.textContent = 'Edit Schedule';
+  scheduleSubmitBtn.textContent = 'Update Schedule';
+  setDrop('sf-day', s.dayOfWeek);
+  $('#sf-start').value = s.startTime || '';
+  $('#sf-end').value = s.endTime || '';
+  $('#sf-duration').value = s.slotDuration || s.duration || 30;
+  $('#sf-tz').value = s.timezone || '';
+  setDrop('sf-active', String(s.isActive ?? s.active ?? true));
+  scheduleForm.classList.add('open');
+};
+
+window.deleteSchedule = async function(id) {
+  const ok = await confirm('Delete Schedule', 'Are you sure you want to delete this schedule? This action cannot be undone.');
+  if (!ok) return;
+  try {
+    await apiFetch('/api/admin/schedules/' + id, { method: 'DELETE' });
+    showToast('Schedule deleted');
+    loadSchedules();
+  } catch (err) {
+    showToast(err.message || 'Failed to delete', 'error');
+  }
+};
+
+scheduleSubmitBtn.addEventListener('click', async () => {
+  const payload = {
+    dayOfWeek: parseInt(getDrop('sf-day'), 10),
+    startTime: $('#sf-start').value,
+    endTime: $('#sf-end').value,
+    slotDuration: parseInt($('#sf-duration').value, 10),
+    timezone: $('#sf-tz').value.trim(),
+    isActive: getDrop('sf-active') === 'true'
+  };
+
+  scheduleSubmitBtn.disabled = true;
+  try {
+    if (editingScheduleId) {
+      await apiFetch('/api/admin/schedules/' + editingScheduleId, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      showToast('Schedule updated');
+    } else {
+      await apiFetch('/api/admin/schedules', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      showToast('Schedule created');
+    }
+    scheduleForm.classList.remove('open');
+    editingScheduleId = null;
+    loadSchedules();
+  } catch (err) {
+    showToast(err.message || 'Failed to save', 'error');
+  } finally {
+    scheduleSubmitBtn.disabled = false;
+  }
+});
+
+/* ================================================================
+   BLOCKED TIMES
+   ================================================================ */
+let blockedTimes = [];
+
+const blockedBody      = $('#blockedBody');
+const blockedForm      = $('#blockedForm');
+const addBlockedBtn    = $('#addBlockedBtn');
+const blockedSubmitBtn = $('#blockedSubmitBtn');
+const blockedCancelBtn = $('#blockedCancelBtn');
+
+async function loadBlocked() {
+  blockedBody.innerHTML = '<tr class="loading-row"><td colspan="4"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>';
+  try {
+    blockedTimes = await apiFetch('/api/admin/blocked-times');
+    renderBlocked();
+  } catch (err) {
+    blockedBody.innerHTML = '<tr><td colspan="4" class="empty-state"><p>Failed to load blocked times</p></td></tr>';
+  }
+}
+
+function renderBlocked() {
+  if (!blockedTimes || blockedTimes.length === 0) {
+    blockedBody.innerHTML = `
+      <tr><td colspan="4">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          <p>No blocked times. Click "Block Time" to add one.</p>
+        </div>
+      </td></tr>`;
+    return;
+  }
+  blockedBody.innerHTML = blockedTimes.map(b => `
+    <tr>
+      <td>${fmtDateTime(b.startAt)}</td>
+      <td>${fmtDateTime(b.endAt)}</td>
+      <td>${b.reason || '-'}</td>
+      <td style="text-align:right">
+        <button class="btn-sm btn-sm-danger" onclick="deleteBlocked('${b._id || b.id}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+addBlockedBtn.addEventListener('click', () => {
+  clearBlockedRangeCal();
+  $('#bf-start-time').value = '09:00';
+  $('#bf-end-time').value = '17:00';
+  $('#bf-reason').value = '';
+  blockedForm.classList.add('open');
+});
+
+blockedCancelBtn.addEventListener('click', () => {
+  blockedForm.classList.remove('open');
+});
+
+window.deleteBlocked = async function(id) {
+  const ok = await confirm('Delete Blocked Time', 'Are you sure you want to remove this blocked time range?');
+  if (!ok) return;
+  try {
+    await apiFetch('/api/admin/blocked-times/' + id, { method: 'DELETE' });
+    showToast('Blocked time removed');
+    loadBlocked();
+  } catch (err) {
+    showToast(err.message || 'Failed to delete', 'error');
+  }
+};
+
+blockedSubmitBtn.addEventListener('click', async () => {
+  const bfRange = document.getElementById('bf-date-range');
+  const startDate = bfRange.dataset.from;
+  const startTime = $('#bf-start-time').value;
+  const endDate = bfRange.dataset.to;
+  const endTime = $('#bf-end-time').value;
+  const reason = $('#bf-reason').value.trim();
+
+  if (!startDate || !startTime || !endDate || !endTime) {
+    showToast('Please select both start and end date/time', 'error');
+    return;
+  }
+  const startVal = startDate + 'T' + startTime;
+  const endVal = endDate + 'T' + endTime;
+  if (new Date(endVal) <= new Date(startVal)) {
+    showToast('End must be after start', 'error');
+    return;
+  }
+
+  blockedSubmitBtn.disabled = true;
+  try {
+    await apiFetch('/api/admin/blocked-times', {
+      method: 'POST',
+      body: JSON.stringify({
+        startAt: new Date(startVal).toISOString(),
+        endAt: new Date(endVal).toISOString(),
+        reason
+      })
+    });
+    showToast('Time blocked successfully');
+    blockedForm.classList.remove('open');
+    loadBlocked();
+  } catch (err) {
+    showToast(err.message || 'Failed to block time', 'error');
+  } finally {
+    blockedSubmitBtn.disabled = false;
+  }
+});
+
+/* ================================================================
+   STAFF
+   ================================================================ */
+let staffMembers = [];
+let editingStaffId = null;
+
+const staffBody       = $('#staffBody');
+const staffForm       = $('#staffForm');
+const staffFormTitle   = $('#staffFormTitle');
+const addStaffBtn     = $('#addStaffBtn');
+const staffSubmitBtn  = $('#staffSubmitBtn');
+const staffCancelBtn  = $('#staffCancelBtn');
+
+async function loadStaff() {
+  staffBody.innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>';
+  try {
+    staffMembers = await apiFetch('/api/admin/staff');
+    renderStaff();
+  } catch (err) {
+    staffBody.innerHTML = '<tr><td colspan="7" class="empty-state"><p>Failed to load staff</p></td></tr>';
+  }
+}
+
+function renderStaff() {
+  if (!staffMembers || staffMembers.length === 0) {
+    staffBody.innerHTML = `
+      <tr><td colspan="7">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <p>No staff members yet. Click "Add Staff" to create one.</p>
+        </div>
+      </td></tr>`;
+    return;
+  }
+  staffBody.innerHTML = staffMembers.map(s => {
+    const hasCalendar = s.googleCalendarId || s.google_calendar_id;
+    const hasOAuth = s.googleRefreshToken || s.google_refresh_token;
+    const calendarLabel = hasOAuth ? 'Connected' : (hasCalendar ? 'Legacy' : 'Not Connected');
+    const calendarBadge = hasOAuth ? 'badge-confirmed' : (hasCalendar ? 'badge-active' : 'badge-inactive');
+
+    // Onboarding status
+    const obStatus = s.onboardingStatus || s.onboarding_status || 'pending';
+    let obBadge, obLabel, obAction = '';
+    if (obStatus === 'completed') {
+      obBadge = 'badge-confirmed'; obLabel = 'Onboarded';
+    } else if (obStatus === 'partial') {
+      obBadge = 'badge-active'; obLabel = 'Partial';
+    } else {
+      obBadge = 'badge-inactive'; obLabel = 'Pending';
+    }
+    if (obStatus !== 'completed') {
+      const token = s.inviteToken || s.invite_token;
+      const expired = s.inviteTokenExpired ?? s.invite_token_expired ?? true;
+      if (token && !expired) {
+        obAction = `<button class="btn-sm btn-sm-outline" style="margin-left:6px;font-size:11px;padding:2px 8px" onclick="copyInviteLink('${token}')">Copy Link</button>`;
+      } else {
+        obAction = `<button class="btn-sm btn-sm-outline" style="margin-left:6px;font-size:11px;padding:2px 8px" onclick="regenerateInvite('${s.id}')">New Link</button>`;
+      }
+    }
+
+    return `
+    <tr>
+      <td><strong>${escHtml(s.name || '-')}</strong></td>
+      <td>${escHtml(s.email || '-')}</td>
+      <td>${s.meetingPct != null ? s.meetingPct : (s.meeting_pct != null ? s.meeting_pct : '-')}%</td>
+      <td>
+        <span class="badge ${calendarBadge}">${calendarLabel}</span>
+        ${!hasOAuth ? `<button class="btn-sm btn-sm-outline" style="margin-left:6px;font-size:11px;padding:2px 8px" onclick="connectStaffGoogleById('${s.id}')">Connect</button>` : ''}
+      </td>
+      <td><span class="badge ${obBadge}">${obLabel}</span>${obAction}</td>
+      <td><span class="badge ${(s.isActive ?? s.is_active) ? 'badge-active' : 'badge-inactive'}">${(s.isActive ?? s.is_active) ? 'Active' : 'Inactive'}</span></td>
+      <td style="text-align:right">
+        <button class="btn-sm btn-sm-outline" onclick="editStaff('${s.id}')">Edit</button>
+        <button class="btn-sm btn-sm-danger" onclick="deleteStaff('${s.id}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+addStaffBtn.addEventListener('click', () => {
+  editingStaffId = null;
+  staffFormTitle.textContent = 'Add New Staff Member';
+  staffSubmitBtn.textContent = 'Save Staff';
+  $('#stf-name').value = '';
+  $('#stf-email').value = '';
+  $('#stf-pct').value = '100';
+  $('#stf-gcal').value = '';
+  setDrop('stf-active', 'true');
+  $('#stf-gcal-group').style.display = 'none';
+  staffForm.classList.add('open');
+});
+
+staffCancelBtn.addEventListener('click', () => {
+  staffForm.classList.remove('open');
+  editingStaffId = null;
+});
+
+window.editStaff = function(id) {
+  const s = staffMembers.find(x => String(x.id) === String(id));
+  if (!s) return;
+  editingStaffId = id;
+  staffFormTitle.textContent = 'Edit Staff Member';
+  staffSubmitBtn.textContent = 'Update Staff';
+  $('#stf-name').value = s.name || '';
+  $('#stf-email').value = s.email || '';
+  $('#stf-pct').value = s.meetingPct != null ? s.meetingPct : (s.meeting_pct != null ? s.meeting_pct : 100);
+  $('#stf-gcal').value = s.googleCalendarId || s.google_calendar_id || '';
+  setDrop('stf-active', String(s.isActive ?? s.is_active ?? true));
+
+  // Show Google Calendar connection section
+  const gcalGroup = $('#stf-gcal-group');
+  const gcalInfo = $('#stf-gcal-info');
+  const connectBtn = $('#stf-gcal-connect');
+  const disconnectBtn = $('#stf-gcal-disconnect');
+  gcalGroup.style.display = '';
+  if (s.googleRefreshToken || s.google_refresh_token) {
+    gcalInfo.textContent = 'Connected: ' + (s.googleCalendarId || s.google_calendar_id || 'primary');
+    gcalInfo.style.color = 'var(--success)';
+    connectBtn.style.display = 'none';
+    disconnectBtn.style.display = '';
+  } else {
+    gcalInfo.textContent = 'Not connected — click below to authorize.';
+    gcalInfo.style.color = 'var(--text-mid)';
+    connectBtn.style.display = '';
+    disconnectBtn.style.display = 'none';
+  }
+
+  staffForm.classList.add('open');
+};
+
+window.copyInviteLink = function(token) {
+  const url = window.location.origin + '/invite.html?token=' + token;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('Invite link copied to clipboard');
+  }).catch(() => {
+    // Fallback: select a temporary input
+    const tmp = document.createElement('input');
+    tmp.value = url;
+    document.body.appendChild(tmp);
+    tmp.select();
+    document.execCommand('copy');
+    document.body.removeChild(tmp);
+    showToast('Invite link copied to clipboard');
+  });
+};
+
+window.regenerateInvite = async function(id) {
+  try {
+    const data = await apiFetch('/api/admin/staff/' + id + '/invite', { method: 'POST' });
+    copyInviteLink(data.inviteToken || data.invite_token);
+    loadStaff();
+  } catch (err) {
+    showToast(err.message || 'Failed to generate invite link', 'error');
+  }
+};
+
+window.deleteStaff = async function(id) {
+  const ok = await confirm('Delete Staff Member', 'Are you sure you want to delete this staff member? Their existing bookings will remain but be unassigned.');
+  if (!ok) return;
+  try {
+    await apiFetch('/api/admin/staff/' + id, { method: 'DELETE' });
+    showToast('Staff member deleted');
+    loadStaff();
+  } catch (err) {
+    showToast(err.message || 'Failed to delete', 'error');
+  }
+};
+
+// Google Calendar OAuth connect (from table row)
+window.connectStaffGoogleById = async function(id) {
+  try {
+    const data = await apiFetch('/api/admin/staff/' + id + '/google/authorize');
+    if (data.url) {
+      const popup = window.open(data.url, 'google_oauth', 'width=500,height=700');
+      // Poll for popup close and refresh
+      const poll = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(poll);
+          loadStaff();
+        }
+      }, 1000);
+    }
+  } catch (err) {
+    showToast(err.message || 'Failed to start Google authorization', 'error');
+  }
+};
+
+// Google Calendar OAuth connect (from edit form)
+window.connectStaffGoogle = function() {
+  if (!editingStaffId) {
+    showToast('Save the staff member first', 'error');
+    return;
+  }
+  connectStaffGoogleById(editingStaffId);
+};
+
+// Google Calendar disconnect (from edit form)
+window.disconnectStaffGoogle = async function() {
+  if (!editingStaffId) return;
+  const ok = await confirm('Disconnect Google Calendar', 'This will remove the calendar connection. The staff member will no longer receive meeting bookings until reconnected.');
+  if (!ok) return;
+  try {
+    await apiFetch('/api/admin/staff/' + editingStaffId + '/google/disconnect', { method: 'POST' });
+    showToast('Google Calendar disconnected');
+    staffForm.classList.remove('open');
+    editingStaffId = null;
+    loadStaff();
+  } catch (err) {
+    showToast(err.message || 'Failed to disconnect', 'error');
+  }
+};
+
+staffSubmitBtn.addEventListener('click', async () => {
+  const name = $('#stf-name').value.trim();
+  const email = $('#stf-email').value.trim();
+  if (!name || !email) {
+    showToast('Name and email are required', 'error');
+    return;
+  }
+
+  const payload = {
+    name,
+    email,
+    meeting_pct: parseInt($('#stf-pct').value, 10) || 0,
+    is_active: getDrop('stf-active') === 'true'
+  };
+
+  staffSubmitBtn.disabled = true;
+  try {
+    if (editingStaffId) {
+      await apiFetch('/api/admin/staff/' + editingStaffId, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      showToast('Staff member updated');
+    } else {
+      const newStaff = await apiFetch('/api/admin/staff', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      const token = newStaff.inviteToken || newStaff.invite_token;
+      if (token) {
+        copyInviteLink(token);
+        showToast('Staff created! Invite link copied to clipboard.');
+      } else {
+        showToast('Staff member created');
+      }
+    }
+    staffForm.classList.remove('open');
+    editingStaffId = null;
+    loadStaff();
+  } catch (err) {
+    showToast(err.message || 'Failed to save', 'error');
+  } finally {
+    staffSubmitBtn.disabled = false;
+  }
+});
+
+/* ================================================================
+   BOOKINGS
+   ================================================================ */
+let bookings = [];
+
+const bookingsBody    = $('#bookingsBody');
+const filterApplyBtn  = $('#filterApplyBtn');
+
+async function loadBookings() {
+  bookingsBody.innerHTML = '<tr class="loading-row"><td colspan="8"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>';
+  try {
+    let query = '';
+    const params = [];
+    const statusVal = getDrop('filterStatus');
+    if (statusVal) params.push('status=' + encodeURIComponent(statusVal));
+    const rangeEl = document.getElementById('filterDateRange');
+    const fromVal = rangeEl ? rangeEl.dataset.from : '';
+    const toVal = rangeEl ? rangeEl.dataset.to : '';
+    if (fromVal) params.push('from=' + encodeURIComponent(fromVal));
+    if (toVal) params.push('to=' + encodeURIComponent(toVal));
+    if (params.length) query = '?' + params.join('&');
+
+    bookings = await apiFetch('/api/admin/bookings' + query);
+    renderBookings();
+  } catch (err) {
+    bookingsBody.innerHTML = '<tr><td colspan="8" class="empty-state"><p>Failed to load bookings</p></td></tr>';
+  }
+}
+
+const cancelledToggle = $('#cancelledToggle');
+const cancelledCount  = $('#cancelledCount');
+const cancelledBody   = $('#cancelledBody');
+const cancelledTable  = $('#cancelledTable');
+
+function renderBookings() {
+  const active = (bookings || []).filter(b => (b.status || '').toLowerCase() !== 'cancelled');
+  const cancelled = (bookings || []).filter(b => (b.status || '').toLowerCase() === 'cancelled');
+
+  if (active.length === 0 && cancelled.length === 0) {
+    bookingsBody.innerHTML = `
+      <tr><td colspan="8">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <p>No bookings found matching your filters.</p>
+        </div>
+      </td></tr>`;
+    cancelledToggle.style.display = 'none';
+    cancelledTable.style.display = 'none';
+    return;
+  }
+
+  if (active.length === 0) {
+    bookingsBody.innerHTML = `
+      <tr><td colspan="8">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <p>No active bookings found.</p>
+        </div>
+      </td></tr>`;
+  } else {
+    bookingsBody.innerHTML = active.map(b => renderBookingRow(b)).join('');
+  }
+
+  // Cancelled compartment
+  if (cancelled.length > 0) {
+    cancelledToggle.style.display = 'flex';
+    cancelledCount.textContent = cancelled.length;
+    cancelledBody.innerHTML = cancelled.map(b => renderBookingRow(b)).join('');
+    // Show/hide table based on toggle state
+    const isOpen = cancelledToggle.classList.contains('open');
+    cancelledTable.style.display = isOpen ? 'table' : 'none';
+  } else {
+    cancelledToggle.style.display = 'none';
+    cancelledTable.style.display = 'none';
+  }
+}
+
+function renderBookingRow(b) {
+  const status = (b.status || 'pending').toLowerCase();
+  const badgeClass = 'badge-' + status;
+  const showCancel = status === 'confirmed';
+  return `
+    <tr>
+      <td><strong>${escHtml(b.guestName || '-')}</strong></td>
+      <td>${escHtml(b.guestEmail || '-')}</td>
+      <td>${escHtml(b.venueName || '-')}</td>
+      <td>${fmtDateTime(b.slotStart)}</td>
+      <td>${escHtml(b.staffName || '-')}</td>
+      <td>${escHtml(b.meetingTypeLabel || '-')}</td>
+      <td><span class="badge ${badgeClass}">${status}</span></td>
+      <td style="text-align:right">
+        ${showCancel ? `<button class="btn-sm btn-sm-cancel" onclick="cancelBooking('${b._id || b.id}')">Cancel</button>` : ''}
+      </td>
+    </tr>`;
+}
+
+function escHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+filterApplyBtn.addEventListener('click', loadBookings);
+
+window.toggleCancelled = function() {
+  cancelledToggle.classList.toggle('open');
+  const isOpen = cancelledToggle.classList.contains('open');
+  cancelledTable.style.display = isOpen ? 'table' : 'none';
+  if (isOpen) cancelledBody.classList.add('open');
+  else cancelledBody.classList.remove('open');
+};
+
+window.cancelBooking = async function(id) {
+  const ok = await confirm('Cancel Booking', 'Are you sure you want to cancel this booking? The guest will be notified.');
+  if (!ok) return;
+  try {
+    await apiFetch('/api/admin/bookings/' + id + '/cancel', { method: 'PUT' });
+    showToast('Booking cancelled');
+    const entry = bookings.find(b => String(b._id || b.id) === String(id));
+    if (entry) entry.status = 'cancelled';
+    renderBookings();
+  } catch (err) {
+    showToast(err.message || 'Failed to cancel booking', 'error');
+  }
+};
+
+/* ================================================================
+   MEETING TYPES
+   ================================================================ */
+let meetingTypes = [];
+let editingMtypeId = null;
+
+const mtypeBody = $('#mtypeBody');
+const mtypeForm = $('#mtypeForm');
+const mtypeFormTitle = $('#mtypeFormTitle');
+const addMtypeBtn = $('#addMtypeBtn');
+const mtypeSubmitBtn = $('#mtypeSubmitBtn');
+const mtypeCancelBtn = $('#mtypeCancelBtn');
+
+const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+async function loadMeetingTypes() {
+  mtypeBody.innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>';
+  try {
+    meetingTypes = await apiFetch('/api/admin/meeting-types');
+    renderMeetingTypes();
+  } catch (err) {
+    mtypeBody.innerHTML = '<tr><td colspan="7" class="empty-state"><p>Failed to load meeting types</p></td></tr>';
+  }
+}
+
+function renderMeetingTypes() {
+  if (!meetingTypes || meetingTypes.length === 0) {
+    mtypeBody.innerHTML = `
+      <tr><td colspan="7">
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <p>No meeting types configured. Add one to get started.</p>
+        </div>
+      </td></tr>`;
+    return;
+  }
+  mtypeBody.innerHTML = meetingTypes.map(mt => {
+    const planTags = (mt.plans || []).map(p => `<span class="mt-plan-tag">${escHtml(p)}</span>`).join('') || '<span style="color:var(--text-light);font-size:12px">None</span>';
+    const dayPills = DAYS_SHORT.map((d, i) => {
+      const isOn = mt.schedule && mt.schedule[i] !== false;
+      return `<span class="mt-day-pill${isOn ? ' on' : ''}">${d.charAt(0)}</span>`;
+    }).join('');
+    const statusBadge = mt.isActive !== false
+      ? '<span class="badge badge-confirmed">active</span>'
+      : '<span class="badge badge-cancelled">inactive</span>';
+    return `
+      <tr>
+        <td>
+          <div class="mt-name-cell">
+            <strong>${escHtml(mt.label)}</strong>
+            <span class="mt-key">${escHtml(mt.name)}</span>
+          </div>
+        </td>
+        <td>
+          <span class="mt-duration-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            ${mt.durationMinutes} min
+          </span>
+        </td>
+        <td><div class="mt-plan-tags">${planTags}</div></td>
+        <td><div class="mt-days-pills">${dayPills}</div></td>
+        <td>${statusBadge}</td>
+        <td style="text-align:right">
+          <button class="btn-sm btn-sm-outline" onclick="editMtype(${mt.id})">Edit</button>
+          <button class="btn-sm btn-sm-cancel" onclick="deleteMtype(${mt.id})">Delete</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+addMtypeBtn.addEventListener('click', function() {
+  editingMtypeId = null;
+  mtypeFormTitle.textContent = 'Add Meeting Type';
+  document.getElementById('mt-name').value = '';
+  document.getElementById('mt-label').value = '';
+  document.getElementById('mt-duration').value = '120';
+  setMtActive(true);
+  // Reset plan chips
+  document.querySelectorAll('#mt-plans .mt-chip').forEach(chip => {
+    chip.classList.remove('on');
+    chip.querySelector('input').checked = false;
+  });
+  // Reset day chips (Mon-Fri checked by default)
+  document.querySelectorAll('#mt-days .mt-chip').forEach(chip => {
+    var cb = chip.querySelector('input');
+    var d = parseInt(cb.dataset.day);
+    var isOn = d >= 1 && d <= 5;
+    cb.checked = isOn;
+    chip.classList.toggle('on', isOn);
+  });
+  mtypeForm.classList.add('open');
+});
+
+mtypeCancelBtn.addEventListener('click', function() {
+  mtypeForm.classList.remove('open');
+  editingMtypeId = null;
+});
+
+window.editMtype = function(id) {
+  var mt = meetingTypes.find(m => m.id === id);
+  if (!mt) return;
+  editingMtypeId = id;
+  mtypeFormTitle.textContent = 'Edit Meeting Type';
+  document.getElementById('mt-name').value = mt.name || '';
+  document.getElementById('mt-label').value = mt.label || '';
+  document.getElementById('mt-duration').value = mt.durationMinutes || 120;
+  setMtActive(mt.isActive !== false);
+  // Plan chips
+  var plans = mt.plans || [];
+  document.querySelectorAll('#mt-plans .mt-chip').forEach(chip => {
+    var cb = chip.querySelector('input');
+    var isOn = plans.includes(cb.value);
+    cb.checked = isOn;
+    chip.classList.toggle('on', isOn);
+  });
+  // Day chips
+  document.querySelectorAll('#mt-days .mt-chip').forEach(chip => {
+    var cb = chip.querySelector('input');
+    var d = parseInt(cb.dataset.day);
+    var isOn = mt.schedule ? mt.schedule[d] !== false : true;
+    cb.checked = isOn;
+    chip.classList.toggle('on', isOn);
+  });
+  mtypeForm.classList.add('open');
+};
+
+mtypeSubmitBtn.addEventListener('click', async function() {
+  var name = document.getElementById('mt-name').value.trim();
+  var label = document.getElementById('mt-label').value.trim();
+  var duration = parseInt(document.getElementById('mt-duration').value) || 120;
+  var isActive = document.getElementById('mt-active-toggle').classList.contains('on');
+
+  if (!name || !label) {
+    showToast('Name and label are required', 'error');
+    return;
+  }
+
+  var plans = [];
+  document.querySelectorAll('#mt-plans input[type=checkbox]:checked').forEach(cb => plans.push(cb.value));
+
+  var days = {};
+  document.querySelectorAll('#mt-days input[type=checkbox]').forEach(cb => {
+    days[cb.dataset.day] = cb.checked;
+  });
+
+  mtypeSubmitBtn.disabled = true;
+  try {
+    if (editingMtypeId) {
+      await apiFetch('/api/admin/meeting-types/' + editingMtypeId, {
+        method: 'PUT',
+        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, is_active: isActive })
+      });
+      await apiFetch('/api/admin/meeting-types/' + editingMtypeId + '/plans', {
+        method: 'PUT',
+        body: JSON.stringify({ plans: plans })
+      });
+      await apiFetch('/api/admin/meeting-types/' + editingMtypeId + '/schedule', {
+        method: 'PUT',
+        body: JSON.stringify({ days: days })
+      });
+      showToast('Meeting type updated');
+    } else {
+      var created = await apiFetch('/api/admin/meeting-types', {
+        method: 'POST',
+        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, is_active: isActive })
+      });
+      var newId = created.id;
+      await apiFetch('/api/admin/meeting-types/' + newId + '/plans', {
+        method: 'PUT',
+        body: JSON.stringify({ plans: plans })
+      });
+      await apiFetch('/api/admin/meeting-types/' + newId + '/schedule', {
+        method: 'PUT',
+        body: JSON.stringify({ days: days })
+      });
+      showToast('Meeting type created');
+    }
+    mtypeForm.classList.remove('open');
+    editingMtypeId = null;
+    loadMeetingTypes();
+  } catch (err) {
+    showToast(err.message || 'Failed to save meeting type', 'error');
+  } finally {
+    mtypeSubmitBtn.disabled = false;
+  }
+});
+
+window.deleteMtype = async function(id) {
+  var ok = await confirm('Delete Meeting Type', 'Are you sure you want to delete this meeting type?');
+  if (!ok) return;
+  try {
+    await apiFetch('/api/admin/meeting-types/' + id, { method: 'DELETE' });
+    showToast('Meeting type deleted');
+    loadMeetingTypes();
+  } catch (err) {
+    showToast(err.message || 'Failed to delete meeting type', 'error');
+  }
+};
+
+/* ================================================================
+   MEETING TYPE HELPERS
+   ================================================================ */
+window.toggleMtChip = function(chip, evt) {
+  if (evt) evt.preventDefault();
+  var cb = chip.querySelector('input[type=checkbox]');
+  cb.checked = !cb.checked;
+  chip.classList.toggle('on', cb.checked);
+};
+
+window.toggleMtActive = function() {
+  var tog = document.getElementById('mt-active-toggle');
+  var lbl = document.getElementById('mt-active-label');
+  tog.classList.toggle('on');
+  lbl.textContent = tog.classList.contains('on') ? 'Active' : 'Inactive';
+};
+
+function setMtActive(val) {
+  var tog = document.getElementById('mt-active-toggle');
+  var lbl = document.getElementById('mt-active-label');
+  tog.classList.toggle('on', val);
+  lbl.textContent = val ? 'Active' : 'Inactive';
+}
+
+/* ================================================================
+   INIT
+   ================================================================ */
+(function init() {
+  // Check for password-reset token in URL (?reset=...)
+  const params = new URLSearchParams(window.location.search);
+  const resetToken = params.get('reset');
+  if (resetToken) {
+    // Clean up the URL
+    window.history.replaceState({}, '', window.location.pathname);
+    showSetPw(resetToken, true);
+  } else if (getToken()) {
+    showDash();
+  } else {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>

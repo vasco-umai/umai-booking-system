@@ -1,0 +1,39 @@
+services:
+  booking-api:
+    build: .
+    container_name: umai-booking
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3001}:3001"
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - booking-net
+
+  db:
+    image: postgres:16-alpine
+    container_name: umai-booking-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: umai_booking
+      POSTGRES_USER: ${DB_USER:-booking}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflicts with host PostgreSQL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-booking} -d umai_booking"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - booking-net
+
+volumes:
+  pgdata:
+
+networks:
+  booking-net:

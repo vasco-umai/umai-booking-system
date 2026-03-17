@@ -1,0 +1,155 @@
+const { getCalendarClient, getCalendarClientForStaff } = require('../config/google');
+const logger = require('../lib/logger');
+
+const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
+const MAX_RETRIES = 3;
+
+// Retry helper with exponential backoff
+async function withRetry(fn, label) {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === MAX_RETRIES) {
+        logger.error({ err, attempt, label }, 'All retry attempts exhausted');
+        throw err;
+      }
+      const delay = Math.pow(2, attempt) * 500; // 1s, 2s, 4s
+      logger.warn({ err: err.message, attempt, label, delay }, 'Retrying after failure');
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
+/**
+ * Create a Google Calendar event for a booking.
+ * Retries up to 3 times with exponential backoff.
+ * Returns { eventId, failed } so callers can track sync status.
+ */
+async function createEvent({ summary, description, startTime, endTime, attendeeEmail, timeZone, calendarId, staffRefreshToken }) {
+  const calendar = staffRefreshToken
+    ? getCalendarClientForStaff(staffRefreshToken)
+    : getCalendarClient();
+
+  if (!calendar) return { eventId: null, failed: true };
+
+  const targetCalendar = staffRefreshToken ? 'primary' : (calendarId || CALENDAR_ID);
+
+  const event = {
+    summary,
+    description,
+    start: { dateTime: startTime, timeZone: timeZone || 'UTC' },
+    end: { dateTime: endTime, timeZone: timeZone || 'UTC' },
+    attendees: attendeeEmail ? [{ email: attendeeEmail }] : [],
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'email', minutes: 60 },
+        { method: 'popup', minutes: 15 },
+      ],
+    },
+  };
+
+  try {
+    const res = await withRetry(
+      () => calendar.events.insert({ calendarId: targetCalendar, resource: event, sendUpdates: 'all' }),
+      'createEvent'
+    );
+    logger.info({ eventId: res.data.id, summary }, 'Google Calendar event created');
+    return { eventId: res.data.id, failed: false };
+  } catch (err) {
+    logger.error({ err, summary }, 'Failed to create Google Calendar event after retries');
+    return { eventId: null, failed: true };
+  }
+}
+
+/**
+ * Delete a Google Calendar event.
+ */
+async function deleteEvent(eventId, calendarId, staffRefreshToken) {
+  const calendar = staffRefreshToken
+    ? getCalendarClientForStaff(staffRefreshToken)
+    : getCalendarClient();
+
+  if (!calendar || !eventId) return;
+
+  const targetCalendar = staffRefreshToken ? 'primary' : (calendarId || CALENDAR_ID);
+
+  try {
+    await calendar.events.delete({
+      calendarId: targetCalendar,
+      eventId,
+      sendUpdates: 'all',
+    });
+    logger.info({ eventId }, 'Google Calendar event deleted');
+  } catch (err) {
+    logger.error({ err, eventId }, 'Failed to delete Google Calendar event');
+  }
+}
+
+/**
+ * Get busy times from Google Calendar for a time range (legacy single-calendar).
+ */
+async function getBusyTimes(timeMin, timeMax, calendarId) {
+  const calendar = getCalendarClient();
+  if (!calendar) return [];
+
+  const targetCalendar = calendarId || CALENDAR_ID;
+
+  try {
+    const res = await calendar.freebusy.query({
+      requestBody: {
+        timeMin,
+        timeMax,
+        items: [{ id: targetCalendar }],
+      },
+    });
+    return res.data.calendars[targetCalendar]?.busy || [];
+  } catch (err) {
+    logger.error({ err }, 'Failed to check Google Calendar freebusy');
+    return [];
+  }
+}
+
+/**
+ * Get busy times for multiple staff members, each using their own OAuth token.
+ */
+async function getStaffBusyTimes(staffList, timeMin, timeMax) {
+  const busy = {};
+  const errors = {};
+
+  const promises = staffList.map(async (staff) => {
+    const calendar = getCalendarClientForStaff(staff.google_refresh_token);
+    if (!calendar) {
+      errors[staff.id] = 'No OAuth token';
+      return;
+    }
+
+    try {
+      const res = await calendar.freebusy.query({
+        requestBody: {
+          timeMin,
+          timeMax,
+          items: [{ id: 'primary' }],
+        },
+      });
+
+      const entry = res.data.calendars?.primary;
+      if (entry?.errors && entry.errors.length > 0) {
+        const reason = entry.errors.map(e => e.reason || e.domain).join(', ');
+        logger.warn({ staffId: staff.id, calendarId: staff.google_calendar_id, reason }, 'Calendar freebusy error');
+        errors[staff.id] = reason;
+      } else {
+        busy[staff.id] = entry?.busy || [];
+      }
+    } catch (err) {
+      logger.error({ err, staffId: staff.id }, 'Freebusy query failed');
+      errors[staff.id] = err.message;
+    }
+  });
+
+  await Promise.all(promises);
+  return { busy, errors };
+}
+
+module.exports = { createEvent, deleteEvent, getBusyTimes, getStaffBusyTimes };
