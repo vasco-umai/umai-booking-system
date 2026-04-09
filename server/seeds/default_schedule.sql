@@ -18,3 +18,8 @@ ON CONFLICT (email) DO NOTHING;
 INSERT INTO admin_users (email, name, must_set_password, role)
 VALUES ('vasco.n@letsumai.com', 'Vasco Neves', true, 'restricted')
 ON CONFLICT (email) DO NOTHING;
+
+-- Margarida (admin, set password on first login)
+INSERT INTO admin_users (email, name, must_set_password, role)
+VALUES ('margarida.c@letsumai.com', 'Margarida', true, 'admin')
+ON CONFLICT (email) DO NOTHING;

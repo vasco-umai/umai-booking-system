@@ -130,17 +130,17 @@ router.get('/staff', requireRole('admin'), async (req, res, next) => {
     const staff = await staffService.getAllStaff();
 
     // Fetch invite/onboarding info from admin_users for all staff emails
-    const emails = staff.map(s => s.email);
+    const emails = staff.map(s => s.email.toLowerCase());
     const { rows: adminRows } = await pool.query(
-      `SELECT email, must_set_password, password_hash, invite_token, invite_token_expires
-       FROM admin_users WHERE email = ANY($1)`,
+      `SELECT email, must_set_password, password_hash, invite_token, invite_token_expires, role
+       FROM admin_users WHERE LOWER(email) = ANY($1)`,
       [emails]
     );
     const adminByEmail = {};
-    for (const a of adminRows) adminByEmail[a.email] = a;
+    for (const a of adminRows) adminByEmail[a.email.toLowerCase()] = a;
 
     const sanitized = staff.map(s => {
-      const admin = adminByEmail[s.email];
+      const admin = adminByEmail[s.email.toLowerCase()];
       const hasCalendar = !!s.google_refresh_token;
       const hasPassword = admin && !admin.must_set_password && !!admin.password_hash;
 
@@ -152,6 +152,7 @@ router.get('/staff', requireRole('admin'), async (req, res, next) => {
         ...s,
         google_refresh_token: hasCalendar,
         onboarding_status,
+        role: admin?.role || 'restricted',
         invite_token: admin?.invite_token || null,
         invite_token_expired: admin?.invite_token_expires
           ? new Date(admin.invite_token_expires) < new Date()
@@ -224,6 +225,70 @@ router.delete('/staff/:id', requireRole('admin'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Staff Duration Overrides ──────────────────────
+
+// GET /api/admin/staff/:id/duration-overrides
+router.get('/staff/:id/duration-overrides', requireRole('admin'), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT sdo.*, mt.name as meeting_type_name, mt.label as meeting_type_label, mt.duration_minutes as default_duration
+       FROM staff_duration_overrides sdo
+       JOIN meeting_types mt ON mt.id = sdo.meeting_type_id
+       WHERE sdo.staff_member_id = $1
+       ORDER BY sdo.meeting_type_id`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/admin/staff/:id/duration-overrides
+router.put('/staff/:id/duration-overrides', requireRole('admin'), async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const staffId = parseInt(req.params.id, 10);
+    const { overrides } = req.body; // [{ meeting_type_id, duration_minutes }]
+
+    if (!Array.isArray(overrides)) {
+      return res.status(400).json({ error: 'overrides must be an array of { meeting_type_id, duration_minutes }' });
+    }
+
+    await client.query('BEGIN');
+
+    // Delete existing overrides for this staff member
+    await client.query('DELETE FROM staff_duration_overrides WHERE staff_member_id = $1', [staffId]);
+
+    // Insert new overrides (skip entries with no duration)
+    for (const o of overrides) {
+      if (o.meeting_type_id && o.duration_minutes > 0) {
+        await client.query(
+          `INSERT INTO staff_duration_overrides (staff_member_id, meeting_type_id, duration_minutes)
+           VALUES ($1, $2, $3)`,
+          [staffId, o.meeting_type_id, o.duration_minutes]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Return updated overrides
+    const { rows } = await pool.query(
+      `SELECT sdo.*, mt.name as meeting_type_name, mt.label as meeting_type_label
+       FROM staff_duration_overrides sdo
+       JOIN meeting_types mt ON mt.id = sdo.meeting_type_id
+       WHERE sdo.staff_member_id = $1
+       ORDER BY sdo.meeting_type_id`,
+      [staffId]
+    );
+    res.json(rows);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 // ── Bookings ──────────────────────────────────────
 
 // GET /api/admin/bookings?status=confirmed&from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -274,13 +339,20 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
     const booking = rows[0];
 
     // Delete Google Calendar event — use staff's OAuth token if available
+    let staffEmail;
     if (booking.gcal_event_id) {
       let staffRefreshToken;
       if (booking.staff_member_id) {
         const staff = await staffService.getStaffById(booking.staff_member_id);
-        if (staff) staffRefreshToken = staff.google_refresh_token;
+        if (staff) {
+          staffRefreshToken = staff.google_refresh_token;
+          staffEmail = staff.email;
+        }
       }
       calendarService.deleteEvent(booking.gcal_event_id, undefined, staffRefreshToken).catch(() => {});
+    } else if (booking.staff_member_id) {
+      const staff = await staffService.getStaffById(booking.staff_member_id);
+      if (staff) staffEmail = staff.email;
     }
 
     // Invalidate availability cache
@@ -292,6 +364,7 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
       guestEmail: booking.guest_email,
       slotStart: booking.slot_start.toISOString(),
       guestTz: booking.guest_tz,
+      replyTo: staffEmail || undefined,
     }).catch(() => {});
 
     logger.info({ bookingId: booking.id, adminId: req.admin.id }, 'Booking cancelled');
@@ -303,7 +376,13 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
 router.post('/bookings/:id/resend-confirmation', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { rows } = await pool.query('SELECT * FROM bookings WHERE id = $1', [id]);
+    const { rows } = await pool.query(
+      `SELECT b.*, sm.email as staff_email
+       FROM bookings b
+       LEFT JOIN staff_members sm ON b.staff_member_id = sm.id
+       WHERE b.id = $1`,
+      [id]
+    );
 
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Booking not found' });
@@ -317,6 +396,7 @@ router.post('/bookings/:id/resend-confirmation', async (req, res, next) => {
       slotEnd: booking.slot_end.toISOString(),
       guestTz: booking.guest_tz,
       venueName: booking.venue_name,
+      replyTo: booking.staff_email || undefined,
     });
 
     await pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, id]);
@@ -363,14 +443,14 @@ router.get('/meeting-types', async (req, res, next) => {
 // POST /api/admin/meeting-types
 router.post('/meeting-types', async (req, res, next) => {
   try {
-    const { name, label, duration_minutes, is_active } = req.body;
+    const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes } = req.body;
     if (!name || !label || !duration_minutes) {
       return res.status(400).json({ error: 'name, label, and duration_minutes are required' });
     }
     const { rows } = await pool.query(
-      `INSERT INTO meeting_types (name, label, duration_minutes, is_active)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [name, label, duration_minutes, is_active !== false]
+      `INSERT INTO meeting_types (name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [name, label, duration_minutes, is_active !== false, buffer_minutes || 0, min_advance_minutes != null ? min_advance_minutes : 60]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -385,16 +465,18 @@ router.post('/meeting-types', async (req, res, next) => {
 router.put('/meeting-types/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, label, duration_minutes, is_active } = req.body;
+    const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes } = req.body;
     const { rows } = await pool.query(
       `UPDATE meeting_types SET
         name = COALESCE($1, name),
         label = COALESCE($2, label),
         duration_minutes = COALESCE($3, duration_minutes),
         is_active = COALESCE($4, is_active),
+        buffer_minutes = COALESCE($5, buffer_minutes),
+        min_advance_minutes = COALESCE($6, min_advance_minutes),
         updated_at = NOW()
-       WHERE id = $5 RETURNING *`,
-      [name, label, duration_minutes, is_active, id]
+       WHERE id = $7 RETURNING *`,
+      [name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Meeting type not found' });
     res.json(rows[0]);

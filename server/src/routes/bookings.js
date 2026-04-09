@@ -16,7 +16,7 @@ router.post('/', async (req, res, next) => {
   const client = await pool.connect();
 
   try {
-    let { guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, plan, meeting_type_id, addons } = req.body;
+    let { guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, plan, meeting_type_id, addons, staff_member_id } = req.body;
 
     // Sanitize string inputs to prevent XSS in emails/calendar events
     guest_name = stripHtml(guest_name);
@@ -57,8 +57,18 @@ router.post('/', async (req, res, next) => {
     const lockKey = Math.abs(lockHash.readInt32BE(0));
     await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
-    // Assign a staff member via weighted distribution (null = legacy single-calendar)
-    const assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end);
+    // Assign a staff member: use specified staff if provided, otherwise weighted distribution
+    let assignedStaff;
+    if (staff_member_id) {
+      const activeStaff = await staffService.getActiveStaffWithCalendar();
+      assignedStaff = activeStaff.find(s => s.id === parseInt(staff_member_id, 10)) || null;
+      if (!assignedStaff) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Requested staff member is not available', code: 'INVALID_STAFF' });
+      }
+    } else {
+      assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end);
+    }
 
     // Check for conflicting confirmed bookings
     let conflictQuery = `SELECT id FROM bookings WHERE status = 'confirmed' AND slot_start < $2 AND slot_end > $1`;
@@ -92,11 +102,15 @@ router.post('/', async (req, res, next) => {
     // Invalidate availability cache since a new booking was made
     availabilityCache.clear();
 
-    // Look up meeting type label for calendar description
+    // Look up meeting type label and buffer for calendar description
     let meetingTypeLabel = null;
+    let bufferMinutes = 0;
     if (meeting_type_id) {
-      const { rows: mtRows } = await pool.query('SELECT label FROM meeting_types WHERE id = $1', [meeting_type_id]);
-      if (mtRows.length > 0) meetingTypeLabel = mtRows[0].label;
+      const { rows: mtRows } = await pool.query('SELECT label, buffer_minutes FROM meeting_types WHERE id = $1', [meeting_type_id]);
+      if (mtRows.length > 0) {
+        meetingTypeLabel = mtRows[0].label;
+        bufferMinutes = mtRows[0].buffer_minutes || 0;
+      }
     }
 
     // Build calendar event description based on plan and meeting type
@@ -119,12 +133,20 @@ router.post('/', async (req, res, next) => {
       calendarDescription += `\n\nAdd-ons:\n` + addons.map(a => `- ${stripHtml(a)}`).join('\n');
     }
 
+    // Pad calendar event with buffer time so the buffer shows as blocked on Google Calendar
+    const calStartTime = bufferMinutes > 0
+      ? DateTime.fromISO(slot_start).minus({ minutes: bufferMinutes }).toISO()
+      : slot_start;
+    const calEndTime = bufferMinutes > 0
+      ? DateTime.fromISO(slot_end).plus({ minutes: bufferMinutes }).toISO()
+      : slot_end;
+
     // Async: Create Google Calendar event with retry (uses staff's OAuth token if available)
     calendarService.createEvent({
       summary: `UMAI x ${venue_name || guest_name} - Setup and Settings Adjustments`,
       description: calendarDescription,
-      startTime: slot_start,
-      endTime: slot_end,
+      startTime: calStartTime,
+      endTime: calEndTime,
       attendeeEmail: guest_email,
       timeZone: guest_tz || 'UTC',
       staffRefreshToken: assignedStaff?.google_refresh_token,
@@ -148,6 +170,7 @@ router.post('/', async (req, res, next) => {
       slotEnd: slot_end,
       guestTz: guest_tz || 'UTC',
       venueName: venue_name,
+      replyTo: assignedStaff?.email || undefined,
     }).then(sent => {
       pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, booking.id]);
     }).catch(err => {

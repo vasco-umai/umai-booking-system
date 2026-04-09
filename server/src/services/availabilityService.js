@@ -38,10 +38,11 @@ function buildSlotsFromSchedule(sched, dateStr, durationOverride) {
 }
 
 /**
- * Check if two time intervals overlap.
+ * Check if two time intervals overlap, with optional buffer.
+ * Buffer expands the blocked interval on both sides.
  */
-function overlaps(startMs, endMs, interval) {
-  return startMs < interval.end && endMs > interval.start;
+function overlaps(startMs, endMs, interval, bufferMs = 0) {
+  return startMs < (interval.end + bufferMs) && endMs > (interval.start - bufferMs);
 }
 
 /**
@@ -59,7 +60,7 @@ function overlaps(startMs, endMs, interval) {
  * @param {string} userTz - User's IANA timezone
  * @returns {Array<{start: string, end: string, display: string}>}
  */
-async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meetingTypeId) {
+async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meetingTypeId, staffId) {
   const userDate = DateTime.fromISO(dateStr, { zone: userTz });
   if (!userDate.isValid) {
     throw Object.assign(new Error('Invalid date'), { status: 400 });
@@ -67,31 +68,56 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
 
   const dayOfWeek = userDate.weekday === 7 ? 0 : userDate.weekday;
 
-  // Check meeting type day-of-week availability
+  // Fetch meeting type config (buffer + min advance)
+  let bufferMinutes = 0;
+  let minAdvanceMinutes = 60;
   if (meetingTypeId) {
     const { rows } = await pool.query(
-      `SELECT is_available FROM meeting_type_schedules
-       WHERE meeting_type_id = $1 AND day_of_week = $2`,
+      `SELECT is_available, buffer_minutes, min_advance_minutes FROM meeting_type_schedules mts
+       RIGHT JOIN meeting_types mt ON mt.id = mts.meeting_type_id AND mts.day_of_week = $2
+       WHERE mt.id = $1`,
       [meetingTypeId, dayOfWeek]
     );
-    if (rows.length > 0 && !rows[0].is_available) {
-      return [];
+    if (rows.length > 0) {
+      if (rows[0].is_available === false) return [];
+      bufferMinutes = rows[0].buffer_minutes || 0;
+      minAdvanceMinutes = rows[0].min_advance_minutes != null ? rows[0].min_advance_minutes : 60;
     }
   }
 
+  // Check for staff-specific duration override
+  if (staffId && meetingTypeId && !durationOverride) {
+    const { rows: overrideRows } = await pool.query(
+      `SELECT duration_minutes FROM staff_duration_overrides
+       WHERE staff_member_id = $1 AND meeting_type_id = $2`,
+      [staffId, meetingTypeId]
+    );
+    if (overrideRows.length > 0) {
+      durationOverride = overrideRows[0].duration_minutes;
+    }
+  }
+
+  const bufferMs = bufferMinutes * 60 * 1000;
+
   // Determine mode
-  const activeStaff = await staffService.getActiveStaffWithCalendar();
+  let activeStaff = await staffService.getActiveStaffWithCalendar();
+
+  // Filter to specific staff member if requested
+  if (staffId && activeStaff.length > 0) {
+    activeStaff = activeStaff.filter(s => s.id === staffId);
+    if (activeStaff.length === 0) return []; // requested staff not found/active
+  }
 
   if (activeStaff.length > 0) {
-    return getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride);
+    return getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs, minAdvanceMinutes);
   }
-  return getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride);
+  return getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride, bufferMs, minAdvanceMinutes);
 }
 
 // -----------------------------------------------------------------------
 // MULTI-STAFF MODE
 // -----------------------------------------------------------------------
-async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride) {
+async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs = 0, minAdvanceMinutes = 60) {
   // 1. Get schedules: per-staff + global fallback
   const staffIds = activeStaff.map(s => s.id);
 
@@ -140,8 +166,8 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
 
   if (allSlotSet.size === 0) return [];
 
-  // 3. Filter out past slots (must be at least 1 hour in the future)
-  const now = DateTime.utc().plus({ hours: 1 });
+  // 3. Filter out past slots (must be at least minAdvanceMinutes in the future)
+  const now = DateTime.utc().plus({ minutes: minAdvanceMinutes });
 
   // Collect all unique slots across all staff for the response
   // We need to check: for each unique time slot, is ANY staff member free?
@@ -233,9 +259,9 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
     const slotStartMs = slot.start.toMillis();
     const slotEndMs = slot.end.toMillis();
 
-    // Check global blocked times
+    // Check global blocked times (with buffer)
     for (const bt of blockedIntervals) {
-      if (overlaps(slotStartMs, slotEndMs, bt)) return false;
+      if (overlaps(slotStartMs, slotEndMs, bt, bufferMs)) return false;
     }
 
     // Check if at least one staff member is free AND has this slot in their schedule
@@ -252,15 +278,15 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
 
       let staffFree = true;
 
-      // Check bookings
+      // Check bookings (with buffer)
       for (const b of (staffBookings[staff.id] || [])) {
-        if (overlaps(slotStartMs, slotEndMs, b)) { staffFree = false; break; }
+        if (overlaps(slotStartMs, slotEndMs, b, bufferMs)) { staffFree = false; break; }
       }
       if (!staffFree) continue;
 
-      // Check Google Calendar
+      // Check Google Calendar (with buffer)
       for (const gb of (staffGcalBusy[staff.id] || [])) {
-        if (overlaps(slotStartMs, slotEndMs, gb)) { staffFree = false; break; }
+        if (overlaps(slotStartMs, slotEndMs, gb, bufferMs)) { staffFree = false; break; }
       }
 
       if (staffFree) return true;
@@ -282,7 +308,7 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
 // -----------------------------------------------------------------------
 // LEGACY SINGLE-CALENDAR MODE
 // -----------------------------------------------------------------------
-async function getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride) {
+async function getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride, bufferMs = 0, minAdvanceMinutes = 60) {
   const { rows: schedules } = await pool.query(
     'SELECT * FROM schedules WHERE day_of_week = $1 AND is_active = true AND staff_member_id IS NULL',
     [dayOfWeek]
@@ -297,7 +323,7 @@ async function getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverr
 
   if (allSlots.length === 0) return [];
 
-  const now = DateTime.utc().plus({ hours: 1 });
+  const now = DateTime.utc().plus({ minutes: minAdvanceMinutes });
   allSlots = allSlots.filter(s => s.start > now);
   if (allSlots.length === 0) return [];
 
@@ -332,19 +358,19 @@ async function getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverr
     for (const b of bookings) {
       const bStart = DateTime.fromJSDate(new Date(b.slot_start)).toMillis();
       const bEnd = DateTime.fromJSDate(new Date(b.slot_end)).toMillis();
-      if (slotStartMs < bEnd && slotEndMs > bStart) return false;
+      if (overlaps(slotStartMs, slotEndMs, { start: bStart, end: bEnd }, bufferMs)) return false;
     }
 
     for (const bt of blocked) {
       const btStart = DateTime.fromJSDate(new Date(bt.start_at)).toMillis();
       const btEnd = DateTime.fromJSDate(new Date(bt.end_at)).toMillis();
-      if (slotStartMs < btEnd && slotEndMs > btStart) return false;
+      if (overlaps(slotStartMs, slotEndMs, { start: btStart, end: btEnd }, bufferMs)) return false;
     }
 
     for (const gb of gcalBusy) {
       const gbStart = DateTime.fromISO(gb.start).toMillis();
       const gbEnd = DateTime.fromISO(gb.end).toMillis();
-      if (slotStartMs < gbEnd && slotEndMs > gbStart) return false;
+      if (overlaps(slotStartMs, slotEndMs, { start: gbStart, end: gbEnd }, bufferMs)) return false;
     }
 
     return true;
@@ -370,7 +396,7 @@ async function getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverr
  * @param {string} userTz
  * @returns {Array<string>} Array of YYYY-MM-DD dates that have slots
  */
-async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId) {
+async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId, staffId) {
   // Get meeting type day restrictions
   let mtDisabledDays = new Set();
   if (meetingTypeId) {
@@ -382,7 +408,13 @@ async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId) 
     mtDisabledDays = new Set(rows.map(r => r.day_of_week));
   }
 
-  const activeStaff = await staffService.getActiveStaffWithCalendar();
+  let activeStaff = await staffService.getActiveStaffWithCalendar();
+
+  // Filter to specific staff member if requested
+  if (staffId && activeStaff.length > 0) {
+    activeStaff = activeStaff.filter(s => s.id === staffId);
+    if (activeStaff.length === 0) return [];
+  }
 
   let scheduleQuery;
   let scheduleParams = [];
@@ -458,4 +490,50 @@ async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId) 
   return availableDates;
 }
 
-module.exports = { getAvailableSlots, getMonthAvailability };
+/**
+ * Find the next date (starting from `fromDateStr`) that has real available slots.
+ * Uses getMonthAvailability() to get cheap schedule-based candidates, then
+ * calls getAvailableSlots() on each to check real availability.
+ *
+ * @param {string} fromDateStr - YYYY-MM-DD start date
+ * @param {string} userTz - User's IANA timezone
+ * @param {number} [durationOverride]
+ * @param {number} [meetingTypeId]
+ * @param {number} [staffId]
+ * @param {number} [maxDaysAhead=60] - Max days to search ahead
+ * @returns {string|null} YYYY-MM-DD or null if none found
+ */
+async function getNextAvailableDate(fromDateStr, userTz = 'UTC', durationOverride, meetingTypeId, staffId, maxDaysAhead = 60) {
+  const fromDate = DateTime.fromISO(fromDateStr, { zone: userTz });
+  if (!fromDate.isValid) return null;
+
+  const limitDate = fromDate.plus({ days: maxDaysAhead });
+  let currentMonth = { year: fromDate.year, month: fromDate.month };
+  let checkedMonths = 0;
+
+  while (checkedMonths < 3) { // Check up to 3 months ahead
+    const candidates = await getMonthAvailability(currentMonth.year, currentMonth.month, userTz, meetingTypeId, staffId);
+
+    // Filter to dates >= fromDateStr and <= limitDate
+    const validCandidates = candidates.filter(d => d >= fromDateStr && d <= limitDate.toISODate()).sort();
+
+    for (const dateStr of validCandidates) {
+      const slots = await getAvailableSlots(dateStr, userTz, durationOverride, meetingTypeId, staffId);
+      if (slots.length > 0) {
+        return dateStr;
+      }
+    }
+
+    // Move to next month
+    if (currentMonth.month === 12) {
+      currentMonth = { year: currentMonth.year + 1, month: 1 };
+    } else {
+      currentMonth = { year: currentMonth.year, month: currentMonth.month + 1 };
+    }
+    checkedMonths++;
+  }
+
+  return null;
+}
+
+module.exports = { getAvailableSlots, getMonthAvailability, getNextAvailableDate };

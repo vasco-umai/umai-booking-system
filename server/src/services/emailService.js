@@ -17,7 +17,7 @@ function getConfirmationTemplate() {
  * Send booking confirmation email.
  * Returns true if sent successfully, false otherwise.
  */
-async function sendConfirmation({ guestName, guestEmail, slotStart, slotEnd, guestTz, venueName }) {
+async function sendConfirmation({ guestName, guestEmail, slotStart, slotEnd, guestTz, venueName, replyTo }) {
   const transporter = getTransporter();
   if (!transporter) {
     logger.warn('Email not configured - skipping confirmation email');
@@ -39,12 +39,14 @@ async function sendConfirmation({ guestName, guestEmail, slotStart, slotEnd, gue
   html = html.replace(/{{venueName}}/g, venueName || 'your venue');
 
   try {
-    await transporter.sendMail({
+    const mailOpts = {
       from: process.env.EMAIL_FROM || 'UMAI <noreply@umai.io>',
       to: guestEmail,
       subject: `UMAI Training Session Confirmed - ${dateStr}`,
       html,
-    });
+    };
+    if (replyTo) mailOpts.replyTo = replyTo;
+    await transporter.sendMail(mailOpts);
     logger.info({ to: guestEmail }, 'Confirmation email sent');
     return true;
   } catch (err) {
@@ -57,7 +59,7 @@ async function sendConfirmation({ guestName, guestEmail, slotStart, slotEnd, gue
  * Send cancellation email.
  * Returns true if sent successfully, false otherwise.
  */
-async function sendCancellation({ guestName, guestEmail, slotStart, guestTz }) {
+async function sendCancellation({ guestName, guestEmail, slotStart, guestTz, replyTo }) {
   const transporter = getTransporter();
   if (!transporter) return false;
 
@@ -66,7 +68,7 @@ async function sendCancellation({ guestName, guestEmail, slotStart, guestTz }) {
   const timeStr = startDt.toFormat('h:mm a');
 
   try {
-    await transporter.sendMail({
+    const mailOpts = {
       from: process.env.EMAIL_FROM || 'UMAI <noreply@umai.io>',
       to: guestEmail,
       subject: 'UMAI Training Session Cancelled',
@@ -79,7 +81,9 @@ async function sendCancellation({ guestName, guestEmail, slotStart, guestTz }) {
           <p style="color: #71717A; font-size: 13px; margin-top: 32px;">- The UMAI Team</p>
         </div>
       `,
-    });
+    };
+    if (replyTo) mailOpts.replyTo = replyTo;
+    await transporter.sendMail(mailOpts);
     logger.info({ to: guestEmail }, 'Cancellation email sent');
     return true;
   } catch (err) {

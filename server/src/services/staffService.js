@@ -4,6 +4,12 @@ const { pool } = require('../config/db');
 const logger = require('../lib/logger');
 const calendarService = require('./calendarService');
 
+// Emails that must always have admin role -- prevents accidental role loss
+const PROTECTED_ADMIN_EMAILS = [
+  'admin@umai.io',
+  'margarida.c@letsumai.com',
+];
+
 // ---------------------------------------------------------------------------
 // CRUD Operations
 // ---------------------------------------------------------------------------
@@ -68,14 +74,32 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
   const inviteToken = crypto.randomBytes(32).toString('hex');
   const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-  await pool.query(
-    `INSERT INTO admin_users (email, password_hash, name, must_set_password, invite_token, invite_token_expires)
-     VALUES ($1, NULL, $2, true, $3, $4)
-     ON CONFLICT (email) DO UPDATE SET invite_token = $3, invite_token_expires = $4`,
-    [email, name, inviteToken, inviteExpires]
+  const { rows: existingAdmin } = await pool.query(
+    'SELECT id, password_hash, must_set_password, role FROM admin_users WHERE LOWER(email) = LOWER($1)',
+    [email]
   );
 
-  return { ...rows[0], invite_token: inviteToken };
+  if (existingAdmin.length === 0) {
+    // New user -- create admin_users record with appropriate role
+    const role = PROTECTED_ADMIN_EMAILS.includes(email.toLowerCase()) ? 'admin' : 'restricted';
+    await pool.query(
+      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires)
+       VALUES (LOWER($1), NULL, $2, true, $3, $4, $5)`,
+      [email, name, role, inviteToken, inviteExpires]
+    );
+  } else {
+    const admin = existingAdmin[0];
+    // Only regenerate invite token if user hasn't completed onboarding yet
+    if (admin.must_set_password || !admin.password_hash) {
+      await pool.query(
+        'UPDATE admin_users SET invite_token = $1, invite_token_expires = $2 WHERE id = $3',
+        [inviteToken, inviteExpires, admin.id]
+      );
+    }
+    // If already onboarded: don't touch their record at all
+  }
+
+  return { ...rows[0], invite_token: existingAdmin.length === 0 ? inviteToken : null };
 }
 
 /**
@@ -336,7 +360,7 @@ async function regenerateInviteToken(staffId) {
 
   await pool.query(
     `UPDATE admin_users SET invite_token = $1, invite_token_expires = $2
-     WHERE email = $3`,
+     WHERE LOWER(email) = LOWER($3)`,
     [inviteToken, inviteExpires, staff.email]
   );
 
