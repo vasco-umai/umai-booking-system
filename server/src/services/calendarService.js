@@ -88,7 +88,28 @@ async function deleteEvent(eventId, calendarId, staffRefreshToken) {
 }
 
 /**
+ * Extract busy intervals from a list of Google Calendar events.
+ * Includes ALL events except cancelled or explicitly declined by the calendar owner.
+ * This means tentative/unconfirmed meetings are treated as busy.
+ */
+function eventsToBusy(events) {
+  return events
+    .filter(evt => {
+      if (evt.status === 'cancelled') return false;
+      // If staff is an attendee and explicitly declined, skip
+      const self = (evt.attendees || []).find(a => a.self);
+      if (self && self.responseStatus === 'declined') return false;
+      return true;
+    })
+    .map(evt => ({
+      start: evt.start.dateTime || evt.start.date,
+      end: evt.end.dateTime || evt.end.date,
+    }));
+}
+
+/**
  * Get busy times from Google Calendar for a time range (legacy single-calendar).
+ * Uses events.list instead of freebusy to include tentative/unconfirmed events.
  */
 async function getBusyTimes(timeMin, timeMax, calendarId) {
   const calendar = getCalendarClient();
@@ -97,22 +118,24 @@ async function getBusyTimes(timeMin, timeMax, calendarId) {
   const targetCalendar = calendarId || CALENDAR_ID;
 
   try {
-    const res = await calendar.freebusy.query({
-      requestBody: {
-        timeMin,
-        timeMax,
-        items: [{ id: targetCalendar }],
-      },
+    const res = await calendar.events.list({
+      calendarId: targetCalendar,
+      timeMin,
+      timeMax,
+      singleEvents: true,
+      orderBy: 'startTime',
+      fields: 'items(start,end,status,attendees)',
     });
-    return res.data.calendars[targetCalendar]?.busy || [];
+    return eventsToBusy(res.data.items || []);
   } catch (err) {
-    logger.error({ err }, 'Failed to check Google Calendar freebusy');
+    logger.error({ err }, 'Failed to check Google Calendar events');
     return [];
   }
 }
 
 /**
  * Get busy times for multiple staff members, each using their own OAuth token.
+ * Uses events.list instead of freebusy to include tentative/unconfirmed events.
  */
 async function getStaffBusyTimes(staffList, timeMin, timeMax) {
   const busy = {};
@@ -126,24 +149,18 @@ async function getStaffBusyTimes(staffList, timeMin, timeMax) {
     }
 
     try {
-      const res = await calendar.freebusy.query({
-        requestBody: {
-          timeMin,
-          timeMax,
-          items: [{ id: 'primary' }],
-        },
+      const res = await calendar.events.list({
+        calendarId: 'primary',
+        timeMin,
+        timeMax,
+        singleEvents: true,
+        orderBy: 'startTime',
+        fields: 'items(start,end,status,attendees)',
       });
 
-      const entry = res.data.calendars?.primary;
-      if (entry?.errors && entry.errors.length > 0) {
-        const reason = entry.errors.map(e => e.reason || e.domain).join(', ');
-        logger.warn({ staffId: staff.id, calendarId: staff.google_calendar_id, reason }, 'Calendar freebusy error');
-        errors[staff.id] = reason;
-      } else {
-        busy[staff.id] = entry?.busy || [];
-      }
+      busy[staff.id] = eventsToBusy(res.data.items || []);
     } catch (err) {
-      logger.error({ err, staffId: staff.id }, 'Freebusy query failed');
+      logger.error({ err, staffId: staff.id }, 'Calendar events.list failed');
       errors[staff.id] = err.message;
     }
   });

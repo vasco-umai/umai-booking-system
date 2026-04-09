@@ -60,7 +60,7 @@ function overlaps(startMs, endMs, interval, bufferMs = 0) {
  * @param {string} userTz - User's IANA timezone
  * @returns {Array<{start: string, end: string, display: string}>}
  */
-async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meetingTypeId, staffId) {
+async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meetingTypeId, staffId, prefetchedBusy) {
   const userDate = DateTime.fromISO(dateStr, { zone: userTz });
   if (!userDate.isValid) {
     throw Object.assign(new Error('Invalid date'), { status: 400 });
@@ -109,7 +109,7 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
   }
 
   if (activeStaff.length > 0) {
-    return getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs, minAdvanceMinutes);
+    return getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs, minAdvanceMinutes, prefetchedBusy);
   }
   return getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride, bufferMs, minAdvanceMinutes);
 }
@@ -117,7 +117,7 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
 // -----------------------------------------------------------------------
 // MULTI-STAFF MODE
 // -----------------------------------------------------------------------
-async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs = 0, minAdvanceMinutes = 60) {
+async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs = 0, minAdvanceMinutes = 60, prefetchedBusy) {
   // 1. Get schedules: per-staff + global fallback
   const staffIds = activeStaff.map(s => s.id);
 
@@ -209,14 +209,20 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
     [dayStart.toISO(), dayEnd.toISO()]
   );
 
-  // 6. Get per-staff freebusy via OAuth (each staff member's own token)
-  let busyResult = { busy: {}, errors: {} };
-  try {
-    busyResult = await calendarService.getStaffBusyTimes(
-      activeStaff, dayStart.toISO(), dayEnd.toISO()
-    );
-  } catch (err) {
-    logger.warn({ err: err.message }, 'Staff freebusy check failed');
+  // 6. Get per-staff busy times via OAuth (each staff member's own token)
+  // If prefetchedBusy is provided (batch mode), use it instead of making API calls
+  let busyResult;
+  if (prefetchedBusy) {
+    busyResult = prefetchedBusy;
+  } else {
+    busyResult = { busy: {}, errors: {} };
+    try {
+      busyResult = await calendarService.getStaffBusyTimes(
+        activeStaff, dayStart.toISO(), dayEnd.toISO()
+      );
+    } catch (err) {
+      logger.warn({ err: err.message }, 'Staff calendar check failed');
+    }
   }
 
   // Pre-compute intervals
@@ -508,23 +514,39 @@ async function getNextAvailableDate(fromDateStr, userTz = 'UTC', durationOverrid
   if (!fromDate.isValid) return null;
 
   const limitDate = fromDate.plus({ days: maxDaysAhead });
+
+  // Pre-fetch Google Calendar data for the entire search range (one call per staff)
+  // This avoids N_dates x N_staff API calls in the loop below
+  let prefetchedBusy = null;
+  let activeStaff = await staffService.getActiveStaffWithCalendar();
+  if (staffId) {
+    activeStaff = activeStaff.filter(s => s.id === staffId);
+  }
+  if (activeStaff.length > 0) {
+    try {
+      prefetchedBusy = await calendarService.getStaffBusyTimes(
+        activeStaff, fromDate.toISO(), limitDate.toISO()
+      );
+    } catch (err) {
+      logger.warn({ err: err.message }, 'Pre-fetch calendar data failed, will fetch per-date');
+    }
+  }
+
   let currentMonth = { year: fromDate.year, month: fromDate.month };
   let checkedMonths = 0;
 
-  while (checkedMonths < 3) { // Check up to 3 months ahead
+  while (checkedMonths < 3) {
     const candidates = await getMonthAvailability(currentMonth.year, currentMonth.month, userTz, meetingTypeId, staffId);
 
-    // Filter to dates >= fromDateStr and <= limitDate
     const validCandidates = candidates.filter(d => d >= fromDateStr && d <= limitDate.toISODate()).sort();
 
     for (const dateStr of validCandidates) {
-      const slots = await getAvailableSlots(dateStr, userTz, durationOverride, meetingTypeId, staffId);
+      const slots = await getAvailableSlots(dateStr, userTz, durationOverride, meetingTypeId, staffId, prefetchedBusy);
       if (slots.length > 0) {
         return dateStr;
       }
     }
 
-    // Move to next month
     if (currentMonth.month === 12) {
       currentMonth = { year: currentMonth.year + 1, month: 1 };
     } else {
