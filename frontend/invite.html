@@ -182,6 +182,10 @@ async function init() {
   try {
     const res = await fetch(`${API}/api/auth/invite/validate?token=${encodeURIComponent(inviteToken)}`);
     if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      console.error('[INVITE] Validation failed:', res.status, errData);
+      document.getElementById('errorView').querySelector('.subtitle').textContent =
+        errData.error || `Server error (${res.status}). Please ask your admin for a new link.`;
       showView(errorView);
       return;
     }

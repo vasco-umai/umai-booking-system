@@ -358,11 +358,24 @@ async function regenerateInviteToken(staffId) {
   const inviteToken = crypto.randomBytes(32).toString('hex');
   const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-  await pool.query(
+  const result = await pool.query(
     `UPDATE admin_users SET invite_token = $1, invite_token_expires = $2
      WHERE LOWER(email) = LOWER($3)`,
     [inviteToken, inviteExpires, staff.email]
   );
+
+  // No admin_users record found -- create one so the invite token is actually saved
+  if (result.rowCount === 0) {
+    logger.info({ email: staff.email, staffId }, '[INVITE] No admin_users record found, creating one');
+    const role = PROTECTED_ADMIN_EMAILS.includes(staff.email.toLowerCase()) ? 'admin' : 'restricted';
+    await pool.query(
+      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires)
+       VALUES (LOWER($1), NULL, $2, true, $3, $4, $5)`,
+      [staff.email, staff.name, role, inviteToken, inviteExpires]
+    );
+  } else {
+    logger.info({ email: staff.email, staffId, rowCount: result.rowCount }, '[INVITE] Token regenerated');
+  }
 
   return inviteToken;
 }

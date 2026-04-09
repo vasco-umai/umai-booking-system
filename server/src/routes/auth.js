@@ -85,12 +85,22 @@ router.get('/invite/validate', async (req, res, next) => {
       `SELECT au.id, au.name, au.email, au.must_set_password, au.password_hash,
               sm.id as staff_id, sm.google_refresh_token
        FROM admin_users au
-       LEFT JOIN staff_members sm ON sm.email = au.email
+       LEFT JOIN staff_members sm ON LOWER(sm.email) = LOWER(au.email)
        WHERE au.invite_token = $1 AND au.invite_token_expires > NOW()`,
       [token]
     );
 
     if (rows.length === 0) {
+      // Debug: check if token exists at all (even if expired)
+      const { rows: debugRows } = await pool.query(
+        `SELECT invite_token_expires, NOW() as db_now FROM admin_users WHERE invite_token = $1`,
+        [token]
+      );
+      if (debugRows.length > 0) {
+        logger.warn({ tokenPrefix: token.slice(0, 8), expires: debugRows[0].invite_token_expires, dbNow: debugRows[0].db_now }, '[INVITE] Token found but expired');
+      } else {
+        logger.warn({ tokenPrefix: token.slice(0, 8) }, '[INVITE] Token not found in database');
+      }
       return res.status(400).json({ error: 'Invalid or expired invite link' });
     }
 
