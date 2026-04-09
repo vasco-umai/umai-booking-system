@@ -91,17 +91,26 @@ router.get('/invite/validate', async (req, res, next) => {
     );
 
     if (rows.length === 0) {
-      // Debug: check if token exists at all (even if expired)
+      // Check if token exists at all (even if expired) to provide useful diagnostics
       const { rows: debugRows } = await pool.query(
         `SELECT invite_token_expires, NOW() as db_now FROM admin_users WHERE invite_token = $1`,
         [token]
       );
       if (debugRows.length > 0) {
-        logger.warn({ tokenPrefix: token.slice(0, 8), expires: debugRows[0].invite_token_expires, dbNow: debugRows[0].db_now }, '[INVITE] Token found but expired');
+        const expires = debugRows[0].invite_token_expires;
+        const dbNow = debugRows[0].db_now;
+        logger.warn({ tokenPrefix: token.slice(0, 8), expires, dbNow }, '[INVITE] Token found but expired');
+        return res.status(400).json({
+          error: 'Invalid or expired invite link',
+          debug: { reason: 'expired', expires, dbNow }
+        });
       } else {
         logger.warn({ tokenPrefix: token.slice(0, 8) }, '[INVITE] Token not found in database');
+        return res.status(400).json({
+          error: 'Invalid or expired invite link',
+          debug: { reason: 'token_not_found' }
+        });
       }
-      return res.status(400).json({ error: 'Invalid or expired invite link' });
     }
 
     const user = rows[0];

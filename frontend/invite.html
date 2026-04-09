@@ -209,7 +209,10 @@ async function init() {
     // Normal flow: set password
     greetingText.textContent = `Welcome, ${staffData.name}! Set your password to get started.`;
     showView(passwordView);
-  } catch {
+  } catch (err) {
+    console.error('[INVITE] Network error:', err);
+    document.getElementById('errorView').querySelector('.subtitle').textContent =
+      `Network error: ${err.message}. Check your connection.`;
     showView(errorView);
   }
 }
