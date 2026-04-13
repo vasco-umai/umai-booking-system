@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { DateTime } = require('luxon');
 const { pool } = require('../config/db');
 const logger = require('../lib/logger');
 const { availabilityCache } = require('../lib/cache');
@@ -372,6 +373,130 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// PUT /api/admin/bookings/:id/reassign
+router.put('/bookings/:id/reassign', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { staff_member_id } = req.body;
+
+    if (!staff_member_id) {
+      return res.status(400).json({ error: 'staff_member_id is required', code: 'MISSING_FIELDS' });
+    }
+
+    // Get the booking
+    const { rows: bookingRows } = await pool.query(
+      `SELECT b.*, mt.label as meeting_type_label, mt.name as meeting_type_name
+       FROM bookings b
+       LEFT JOIN meeting_types mt ON b.meeting_type_id = mt.id
+       WHERE b.id = $1 AND b.status = 'confirmed'`,
+      [id]
+    );
+
+    if (bookingRows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found or not confirmed' });
+    }
+
+    const booking = bookingRows[0];
+    const oldStaffId = booking.staff_member_id;
+
+    // Validate new staff member
+    const newStaff = await staffService.getStaffById(parseInt(staff_member_id, 10));
+    if (!newStaff || !newStaff.is_active) {
+      return res.status(400).json({ error: 'Staff member not found or inactive', code: 'INVALID_STAFF' });
+    }
+
+    if (newStaff.id === oldStaffId) {
+      return res.status(400).json({ error: 'Booking is already assigned to this staff member' });
+    }
+
+    // Update the booking
+    await pool.query(
+      'UPDATE bookings SET staff_member_id = $1, updated_at = NOW() WHERE id = $2',
+      [newStaff.id, id]
+    );
+
+    // Delete old calendar event if exists
+    if (booking.gcal_event_id) {
+      let oldStaffToken;
+      if (oldStaffId) {
+        const oldStaff = await staffService.getStaffById(oldStaffId);
+        if (oldStaff) oldStaffToken = oldStaff.google_refresh_token;
+      }
+      calendarService.deleteEvent(booking.gcal_event_id, undefined, oldStaffToken).catch(() => {});
+    }
+
+    // Build calendar description for new event
+    const isMini = booking.plan === 'mini';
+    const isOnline = booking.meeting_type_label === 'Online' || booking.meeting_type_label === 'Freemium' || isMini;
+    const guestTz = booking.guest_tz || 'UTC';
+    const guestDt = DateTime.fromJSDate(booking.slot_start, { zone: guestTz });
+    const formattedDay = guestDt.toFormat('MMMM d');
+    const formattedTime = guestDt.toFormat('HH:mm');
+
+    let calendarDescription;
+    if (isMini) {
+      calendarDescription = `We confirm our training session on day ${formattedDay}, online, at ${formattedTime}.\n\nThe setup and training session will last approximately 1 hour, divided as follows:\n- 30 to 40 minutes: UMAI account setup\n- 15 to 20 minutes: team training`;
+    } else if (isOnline) {
+      calendarDescription = `We confirm our training session on day ${formattedDay}, online, at ${formattedTime}.\n\nThe setup and training session will last approximately 2 hours, divided as follows:\n- 1h15 to 1h30: UMAI account setup\n- 30 to 45 minutes: team training`;
+    } else {
+      calendarDescription = `We confirm our training session on day ${formattedDay}, at ${booking.venue_address || booking.venue_name || 'the venue'}, at ${formattedTime}.\n\nThe setup and training session will last approximately 2 hours, divided as follows:\n- 1h15 to 1h30: UMAI account setup\n- 30 to 45 minutes: team training`;
+    }
+
+    // Create new calendar event on new staff's calendar, then send update email
+    calendarService.createEvent({
+      summary: `UMAI x ${booking.venue_name || booking.guest_name} - Setup and Settings Adjustments`,
+      description: calendarDescription,
+      startTime: booking.slot_start.toISOString(),
+      endTime: booking.slot_end.toISOString(),
+      attendeeEmail: booking.guest_email,
+      timeZone: guestTz,
+      staffRefreshToken: newStaff.google_refresh_token,
+      addConference: isOnline,
+    }).then(({ eventId, hangoutLink, failed }) => {
+      if (eventId) {
+        pool.query('UPDATE bookings SET gcal_event_id = $1, gcal_sync_failed = false, meeting_link = $2 WHERE id = $3', [eventId, hangoutLink, id]);
+      } else if (failed) {
+        pool.query('UPDATE bookings SET gcal_event_id = NULL, gcal_sync_failed = true, meeting_link = NULL WHERE id = $1', [id]);
+      }
+
+      // Send update email with meeting link
+      return emailService.sendUpdate({
+        guestName: booking.guest_name,
+        guestEmail: booking.guest_email,
+        slotStart: booking.slot_start.toISOString(),
+        slotEnd: booking.slot_end.toISOString(),
+        guestTz,
+        venueName: booking.venue_name,
+        venueAddress: booking.venue_address,
+        meetingTypeLabel: booking.meeting_type_label || 'Training',
+        meetingLink: hangoutLink || booking.meeting_link || null,
+        replyTo: newStaff.email || undefined,
+      });
+    }).catch(err => {
+      logger.error({ err, bookingId: id }, 'Calendar or update email failed during reassignment');
+      // Still try to send email without meeting link
+      emailService.sendUpdate({
+        guestName: booking.guest_name,
+        guestEmail: booking.guest_email,
+        slotStart: booking.slot_start.toISOString(),
+        slotEnd: booking.slot_end.toISOString(),
+        guestTz,
+        venueName: booking.venue_name,
+        venueAddress: booking.venue_address,
+        meetingTypeLabel: booking.meeting_type_label || 'Training',
+        meetingLink: null,
+        replyTo: newStaff.email || undefined,
+      }).catch(() => {});
+    });
+
+    // Invalidate cache
+    availabilityCache.clear();
+
+    logger.info({ bookingId: id, oldStaffId, newStaffId: newStaff.id, adminId: req.admin.id }, 'Booking reassigned');
+    res.json({ message: 'Booking reassigned', booking: { ...booking, staff_member_id: newStaff.id, staff_name: newStaff.name } });
+  } catch (err) { next(err); }
+});
+
 // POST /api/admin/bookings/:id/resend-confirmation
 router.post('/bookings/:id/resend-confirmation', async (req, res, next) => {
   try {
@@ -397,6 +522,7 @@ router.post('/bookings/:id/resend-confirmation', async (req, res, next) => {
       guestTz: booking.guest_tz,
       venueName: booking.venue_name,
       replyTo: booking.staff_email || undefined,
+      meetingLink: booking.meeting_link || null,
     });
 
     await pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, id]);
