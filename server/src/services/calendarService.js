@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { getCalendarClient, getCalendarClientForStaff } = require('../config/google');
 const logger = require('../lib/logger');
 
@@ -26,12 +27,12 @@ async function withRetry(fn, label) {
  * Retries up to 3 times with exponential backoff.
  * Returns { eventId, failed } so callers can track sync status.
  */
-async function createEvent({ summary, description, startTime, endTime, attendeeEmail, timeZone, calendarId, staffRefreshToken }) {
+async function createEvent({ summary, description, startTime, endTime, attendeeEmail, timeZone, calendarId, staffRefreshToken, addConference }) {
   const calendar = staffRefreshToken
     ? getCalendarClientForStaff(staffRefreshToken)
     : getCalendarClient();
 
-  if (!calendar) return { eventId: null, failed: true };
+  if (!calendar) return { eventId: null, hangoutLink: null, failed: true };
 
   const targetCalendar = staffRefreshToken ? 'primary' : (calendarId || CALENDAR_ID);
 
@@ -50,16 +51,31 @@ async function createEvent({ summary, description, startTime, endTime, attendeeE
     },
   };
 
+  if (addConference) {
+    event.conferenceData = {
+      createRequest: {
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+        requestId: crypto.randomUUID(),
+      },
+    };
+  }
+
   try {
     const res = await withRetry(
-      () => calendar.events.insert({ calendarId: targetCalendar, resource: event, sendUpdates: 'all' }),
+      () => calendar.events.insert({
+        calendarId: targetCalendar,
+        resource: event,
+        sendUpdates: 'all',
+        conferenceDataVersion: addConference ? 1 : 0,
+      }),
       'createEvent'
     );
-    logger.info({ eventId: res.data.id, summary }, 'Google Calendar event created');
-    return { eventId: res.data.id, failed: false };
+    const hangoutLink = res.data.hangoutLink || null;
+    logger.info({ eventId: res.data.id, hangoutLink, summary }, 'Google Calendar event created');
+    return { eventId: res.data.id, hangoutLink, failed: false };
   } catch (err) {
     logger.error({ err, summary }, 'Failed to create Google Calendar event after retries');
-    return { eventId: null, failed: true };
+    return { eventId: null, hangoutLink: null, failed: true };
   }
 }
 

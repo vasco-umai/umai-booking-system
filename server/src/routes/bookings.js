@@ -141,7 +141,18 @@ router.post('/', async (req, res, next) => {
       ? DateTime.fromISO(slot_end).plus({ minutes: bufferMinutes }).toISO()
       : slot_end;
 
-    // Async: Create Google Calendar event with retry (uses staff's OAuth token if available)
+    // Async: Create Google Calendar event, then send confirmation email with meeting link
+    const emailParams = {
+      guestName: guest_name,
+      guestEmail: guest_email,
+      slotStart: slot_start,
+      slotEnd: slot_end,
+      guestTz: guest_tz || 'UTC',
+      venueName: venue_name,
+      replyTo: assignedStaff?.email || undefined,
+      meetingLink: null,
+    };
+
     calendarService.createEvent({
       summary: `UMAI x ${venue_name || guest_name} - Setup and Settings Adjustments`,
       description: calendarDescription,
@@ -150,32 +161,26 @@ router.post('/', async (req, res, next) => {
       attendeeEmail: guest_email,
       timeZone: guest_tz || 'UTC',
       staffRefreshToken: assignedStaff?.google_refresh_token,
-    }).then(({ eventId, failed }) => {
+      addConference: isOnline,
+    }).then(({ eventId, hangoutLink, failed }) => {
       if (eventId) {
-        pool.query('UPDATE bookings SET gcal_event_id = $1, gcal_sync_failed = false WHERE id = $2', [eventId, booking.id]);
+        pool.query('UPDATE bookings SET gcal_event_id = $1, gcal_sync_failed = false, meeting_link = $2 WHERE id = $3', [eventId, hangoutLink, booking.id]);
       } else if (failed) {
         pool.query('UPDATE bookings SET gcal_sync_failed = true WHERE id = $1', [booking.id]);
         logger.error({ bookingId: booking.id, staffName: assignedStaff?.name }, 'GCal sync failed for booking');
       }
-    }).catch(err => {
-      pool.query('UPDATE bookings SET gcal_sync_failed = true WHERE id = $1', [booking.id]);
-      logger.error({ err, bookingId: booking.id }, 'GCal event creation failed');
-    });
-
-    // Async: Send confirmation email with tracking
-    emailService.sendConfirmation({
-      guestName: guest_name,
-      guestEmail: guest_email,
-      slotStart: slot_start,
-      slotEnd: slot_end,
-      guestTz: guest_tz || 'UTC',
-      venueName: venue_name,
-      replyTo: assignedStaff?.email || undefined,
+      emailParams.meetingLink = hangoutLink || null;
+      return emailService.sendConfirmation(emailParams);
     }).then(sent => {
       pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, booking.id]);
     }).catch(err => {
-      pool.query('UPDATE bookings SET confirmation_email_sent = false WHERE id = $1', [booking.id]);
-      logger.error({ err, bookingId: booking.id }, 'Confirmation email failed');
+      logger.error({ err, bookingId: booking.id }, 'GCal or email failed, sending email without meeting link');
+      emailService.sendConfirmation(emailParams).then(sent => {
+        pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, booking.id]);
+      }).catch(emailErr => {
+        pool.query('UPDATE bookings SET confirmation_email_sent = false WHERE id = $1', [booking.id]);
+        logger.error({ err: emailErr, bookingId: booking.id }, 'Confirmation email failed');
+      });
     });
 
     res.status(201).json({
