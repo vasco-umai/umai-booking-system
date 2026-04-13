@@ -267,18 +267,50 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
   logger.info({ staff: freeStaff.map(s => s.name) }, '[ASSIGN] Free (no calendar conflicts)');
 
   if (freeStaff.length === 0) {
-    logger.info('[ASSIGN] All staff busy');
+    logger.info('[ASSIGN] All staff busy (calendar)');
+    return null;
+  }
+
+  // 4b. Also check DB bookings (calendar events may be missing/deleted)
+  const freeStaffIds = freeStaff.map(s => s.id);
+  const { rows: dbBookingRows } = await pool.query(
+    `SELECT staff_member_id, slot_start, slot_end FROM bookings
+     WHERE staff_member_id = ANY($1) AND status = 'confirmed'
+       AND slot_start < $3 AND slot_end > $2`,
+    [freeStaffIds, windowStart, windowEnd]
+  );
+
+  const staffDbBusy = {};
+  for (const b of dbBookingRows) {
+    if (!staffDbBusy[b.staff_member_id]) staffDbBusy[b.staff_member_id] = [];
+    staffDbBusy[b.staff_member_id].push({
+      start: DateTime.fromJSDate(b.slot_start).toMillis(),
+      end: DateTime.fromJSDate(b.slot_end).toMillis(),
+    });
+  }
+
+  const trulyFreeStaff = freeStaff.filter(staff => {
+    const bookings = staffDbBusy[staff.id] || [];
+    return !bookings.some(b =>
+      slotStartMs < (b.end + bufferMs) && slotEndMs > (b.start - bufferMs)
+    );
+  });
+
+  logger.info({ staff: trulyFreeStaff.map(s => s.name) }, '[ASSIGN] Free (calendar + DB bookings)');
+
+  if (trulyFreeStaff.length === 0) {
+    logger.info('[ASSIGN] All staff busy (DB bookings conflict)');
     return null;
   }
 
   // Short-circuit: if only one person is free, assign directly
-  if (freeStaff.length === 1) {
-    logger.info({ selected: freeStaff[0].name }, '[ASSIGN] Only one free - auto-selected');
-    return freeStaff[0];
+  if (trulyFreeStaff.length === 1) {
+    logger.info({ selected: trulyFreeStaff[0].name }, '[ASSIGN] Only one free - auto-selected');
+    return trulyFreeStaff[0];
   }
 
-  // 4. Get confirmed booking counts for the free staff over the last 30 days
-  const freeIds = freeStaff.map((s) => s.id);
+  // 5. Get confirmed booking counts for the free staff over the last 30 days
+  const freeIds = trulyFreeStaff.map((s) => s.id);
 
   const { rows: countRows } = await pool.query(
     `SELECT staff_member_id, COUNT(*) as cnt FROM bookings
@@ -299,22 +331,22 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
   }
 
   // Ensure every free staff member has an entry (default 0)
-  for (const s of freeStaff) {
+  for (const s of trulyFreeStaff) {
     if (!(s.id in bookingCounts)) {
       bookingCounts[s.id] = 0;
     }
   }
 
-  // 5. Compute adjusted weights
-  const totalPct = freeStaff.reduce((sum, s) => sum + s.meeting_pct, 0);
+  // 6. Compute adjusted weights
+  const totalPct = trulyFreeStaff.reduce((sum, s) => sum + s.meeting_pct, 0);
   let weights;
 
-  if (totalBookings < freeStaff.length) {
+  if (totalBookings < trulyFreeStaff.length) {
     // Not enough historical data to self-balance — use raw meeting_pct
-    weights = freeStaff.map((s) => s.meeting_pct);
+    weights = trulyFreeStaff.map((s) => s.meeting_pct);
   } else {
     // Self-balancing: nudge weights so actual ratios converge to expected ratios
-    weights = freeStaff.map((s) => {
+    weights = trulyFreeStaff.map((s) => {
       const expectedRatio = s.meeting_pct / totalPct;
       const actualRatio = bookingCounts[s.id] / totalBookings;
 
@@ -327,24 +359,24 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
     });
   }
 
-  // 6. Weighted random selection
+  // 7. Weighted random selection
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  logger.info({ weights: freeStaff.map((s, i) => `${s.name}=${weights[i].toFixed(2)}`), totalWeight: totalWeight.toFixed(2) }, '[ASSIGN] Weights');
-  logger.info({ bookings: freeStaff.map(s => `${s.name}=${bookingCounts[s.id]}`), totalBookings }, '[ASSIGN] Bookings (30d)');
+  logger.info({ weights: trulyFreeStaff.map((s, i) => `${s.name}=${weights[i].toFixed(2)}`), totalWeight: totalWeight.toFixed(2) }, '[ASSIGN] Weights');
+  logger.info({ bookings: trulyFreeStaff.map(s => `${s.name}=${bookingCounts[s.id]}`), totalBookings }, '[ASSIGN] Bookings (30d)');
 
   let rand = Math.random() * totalWeight;
 
-  for (let i = 0; i < freeStaff.length; i++) {
+  for (let i = 0; i < trulyFreeStaff.length; i++) {
     rand -= weights[i];
     if (rand <= 0) {
-      logger.info({ selected: freeStaff[i].name, id: freeStaff[i].id }, '[ASSIGN] Selected');
-      return freeStaff[i];
+      logger.info({ selected: trulyFreeStaff[i].name, id: trulyFreeStaff[i].id }, '[ASSIGN] Selected');
+      return trulyFreeStaff[i];
     }
   }
 
   // Fallback (should not be reached due to floating-point, but just in case)
-  logger.info({ selected: freeStaff[freeStaff.length - 1].name }, '[ASSIGN] Fallback selected');
-  return freeStaff[freeStaff.length - 1];
+  logger.info({ selected: trulyFreeStaff[trulyFreeStaff.length - 1].name }, '[ASSIGN] Fallback selected');
+  return trulyFreeStaff[trulyFreeStaff.length - 1];
 }
 
 /**
