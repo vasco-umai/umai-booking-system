@@ -70,12 +70,30 @@ router.post('/', async (req, res, next) => {
       assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end);
     }
 
-    // Check for conflicting confirmed bookings
-    let conflictQuery = `SELECT id FROM bookings WHERE status = 'confirmed' AND slot_start < $2 AND slot_end > $1`;
+    // Look up meeting type label and buffer before conflict check
+    let meetingTypeLabel = null;
+    let bufferMinutes = 0;
+    if (meeting_type_id) {
+      const { rows: mtRows } = await client.query('SELECT label, buffer_minutes FROM meeting_types WHERE id = $1', [meeting_type_id]);
+      if (mtRows.length > 0) {
+        meetingTypeLabel = mtRows[0].label;
+        bufferMinutes = mtRows[0].buffer_minutes || 0;
+      }
+    }
+
+    // Check for conflicting confirmed bookings (including buffer zone)
+    let conflictQuery;
     const conflictParams = [slot_start, slot_end];
 
+    if (bufferMinutes > 0) {
+      conflictQuery = `SELECT id FROM bookings WHERE status = 'confirmed' AND slot_start < ($2::timestamptz + $3 * interval '1 minute') AND slot_end > ($1::timestamptz - $3 * interval '1 minute')`;
+      conflictParams.push(bufferMinutes);
+    } else {
+      conflictQuery = `SELECT id FROM bookings WHERE status = 'confirmed' AND slot_start < $2 AND slot_end > $1`;
+    }
+
     if (assignedStaff) {
-      conflictQuery += ` AND staff_member_id = $3`;
+      conflictQuery += ` AND staff_member_id = $${conflictParams.length + 1}`;
       conflictParams.push(assignedStaff.id);
     }
 
@@ -102,17 +120,6 @@ router.post('/', async (req, res, next) => {
     // Invalidate availability cache since a new booking was made
     availabilityCache.clear();
 
-    // Look up meeting type label and buffer for calendar description
-    let meetingTypeLabel = null;
-    let bufferMinutes = 0;
-    if (meeting_type_id) {
-      const { rows: mtRows } = await pool.query('SELECT label, buffer_minutes FROM meeting_types WHERE id = $1', [meeting_type_id]);
-      if (mtRows.length > 0) {
-        meetingTypeLabel = mtRows[0].label;
-        bufferMinutes = mtRows[0].buffer_minutes || 0;
-      }
-    }
-
     // Build calendar event description based on plan and meeting type
     const isMini = plan === 'mini';
     const isOnline = meetingTypeLabel === 'Online' || isMini;
@@ -133,14 +140,6 @@ router.post('/', async (req, res, next) => {
       calendarDescription += `\n\nAdd-ons:\n` + addons.map(a => `- ${stripHtml(a)}`).join('\n');
     }
 
-    // Pad calendar event with buffer time so the buffer shows as blocked on Google Calendar
-    const calStartTime = bufferMinutes > 0
-      ? DateTime.fromISO(slot_start).minus({ minutes: bufferMinutes }).toISO()
-      : slot_start;
-    const calEndTime = bufferMinutes > 0
-      ? DateTime.fromISO(slot_end).plus({ minutes: bufferMinutes }).toISO()
-      : slot_end;
-
     // Async: Create Google Calendar event, then send confirmation email with meeting link
     const emailParams = {
       guestName: guest_name,
@@ -156,8 +155,8 @@ router.post('/', async (req, res, next) => {
     calendarService.createEvent({
       summary: `UMAI x ${venue_name || guest_name} - Setup and Settings Adjustments`,
       description: calendarDescription,
-      startTime: calStartTime,
-      endTime: calEndTime,
+      startTime: slot_start,
+      endTime: slot_end,
       attendeeEmail: guest_email,
       timeZone: guest_tz || 'UTC',
       staffRefreshToken: assignedStaff?.google_refresh_token,
