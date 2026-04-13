@@ -57,6 +57,17 @@ router.post('/', async (req, res, next) => {
     const lockKey = Math.abs(lockHash.readInt32BE(0));
     await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
+    // Look up meeting type label and buffer before staff assignment and conflict check
+    let meetingTypeLabel = null;
+    let bufferMinutes = 0;
+    if (meeting_type_id) {
+      const { rows: mtRows } = await client.query('SELECT label, buffer_minutes FROM meeting_types WHERE id = $1', [meeting_type_id]);
+      if (mtRows.length > 0) {
+        meetingTypeLabel = mtRows[0].label;
+        bufferMinutes = mtRows[0].buffer_minutes || 0;
+      }
+    }
+
     // Assign a staff member: use specified staff if provided, otherwise weighted distribution
     let assignedStaff;
     if (staff_member_id) {
@@ -67,18 +78,7 @@ router.post('/', async (req, res, next) => {
         return res.status(400).json({ error: 'Requested staff member is not available', code: 'INVALID_STAFF' });
       }
     } else {
-      assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end);
-    }
-
-    // Look up meeting type label and buffer before conflict check
-    let meetingTypeLabel = null;
-    let bufferMinutes = 0;
-    if (meeting_type_id) {
-      const { rows: mtRows } = await client.query('SELECT label, buffer_minutes FROM meeting_types WHERE id = $1', [meeting_type_id]);
-      if (mtRows.length > 0) {
-        meetingTypeLabel = mtRows[0].label;
-        bufferMinutes = mtRows[0].buffer_minutes || 0;
-      }
+      assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end, bufferMinutes);
     }
 
     // Check for conflicting confirmed bookings (including buffer zone)

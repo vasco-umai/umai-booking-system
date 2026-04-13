@@ -166,8 +166,8 @@ async function deleteStaff(id) {
  * @returns {object|null} The selected staff member, or null if none available
  *                        (caller should fall back to legacy single-calendar).
  */
-async function selectStaffForSlot(slotStart, slotEnd) {
-  logger.info({ slotStart, slotEnd }, '[ASSIGN] Staff assignment started');
+async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
+  logger.info({ slotStart, slotEnd, bufferMinutes }, '[ASSIGN] Staff assignment started');
 
   // 1. Get all eligible staff
   const eligibleStaff = await getActiveStaffWithCalendar();
@@ -250,8 +250,9 @@ async function selectStaffForSlot(slotStart, slotEnd) {
     return null;
   }
 
-  // 4. Filter to staff who are FREE during the requested slot
+  // 4. Filter to staff who are FREE during the requested slot (with buffer)
   //    Skip staff whose calendars are inaccessible (we can't verify availability)
+  const bufferMs = bufferMinutes * 60 * 1000;
   const freeStaff = scheduleEligible.filter((staff) => {
     if (busyResult.errors[staff.id]) return false;
 
@@ -259,7 +260,7 @@ async function selectStaffForSlot(slotStart, slotEnd) {
     return !busyTimes.some((busy) => {
       const busyStart = DateTime.fromISO(busy.start).toMillis();
       const busyEnd = DateTime.fromISO(busy.end).toMillis();
-      return busyStart < slotEndMs && busyEnd > slotStartMs;
+      return slotStartMs < (busyEnd + bufferMs) && slotEndMs > (busyStart - bufferMs);
     });
   });
 
