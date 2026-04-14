@@ -339,34 +339,45 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
 
     const booking = rows[0];
 
-    // Delete Google Calendar event — use staff's OAuth token if available
+    // Delete Google Calendar event (awaited so Vercel doesn't kill it)
     let staffEmail;
-    if (booking.gcal_event_id) {
-      let staffRefreshToken;
-      if (booking.staff_member_id) {
-        const staff = await staffService.getStaffById(booking.staff_member_id);
-        if (staff) {
-          staffRefreshToken = staff.google_refresh_token;
-          staffEmail = staff.email;
+    if (booking.staff_member_id) {
+      const staff = await staffService.getStaffById(booking.staff_member_id);
+      if (staff) {
+        staffEmail = staff.email;
+        if (booking.gcal_event_id) {
+          try {
+            await calendarService.deleteEvent(booking.gcal_event_id, undefined, staff.google_refresh_token);
+            await pool.query('UPDATE bookings SET gcal_event_id = NULL, meeting_link = NULL WHERE id = $1', [id]);
+          } catch (err) {
+            logger.error({ err, bookingId: id }, 'Failed to delete calendar event on cancel');
+          }
         }
       }
-      calendarService.deleteEvent(booking.gcal_event_id, undefined, staffRefreshToken).catch(() => {});
-    } else if (booking.staff_member_id) {
-      const staff = await staffService.getStaffById(booking.staff_member_id);
-      if (staff) staffEmail = staff.email;
+    } else if (booking.gcal_event_id) {
+      try {
+        await calendarService.deleteEvent(booking.gcal_event_id);
+        await pool.query('UPDATE bookings SET gcal_event_id = NULL, meeting_link = NULL WHERE id = $1', [id]);
+      } catch (err) {
+        logger.error({ err, bookingId: id }, 'Failed to delete calendar event on cancel');
+      }
     }
 
     // Invalidate availability cache
     availabilityCache.clear();
 
-    // Send cancellation email
-    emailService.sendCancellation({
-      guestName: booking.guest_name,
-      guestEmail: booking.guest_email,
-      slotStart: booking.slot_start.toISOString(),
-      guestTz: booking.guest_tz,
-      replyTo: staffEmail || undefined,
-    }).catch(() => {});
+    // Send cancellation email (awaited)
+    try {
+      await emailService.sendCancellation({
+        guestName: booking.guest_name,
+        guestEmail: booking.guest_email,
+        slotStart: booking.slot_start.toISOString(),
+        guestTz: booking.guest_tz,
+        replyTo: staffEmail || undefined,
+      });
+    } catch (err) {
+      logger.error({ err, bookingId: id }, 'Failed to send cancellation email');
+    }
 
     logger.info({ bookingId: booking.id, adminId: req.admin.id }, 'Booking cancelled');
     res.json({ message: 'Booking cancelled', booking });
