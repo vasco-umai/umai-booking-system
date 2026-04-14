@@ -13,10 +13,30 @@ function signToken(admin) {
   // Admin tokens expire sooner for security
   const expiresIn = admin.role === 'admin' ? '8h' : '24h';
   return jwt.sign(
-    { id: admin.id, email: admin.email, name: admin.name, role: admin.role },
+    {
+      id: admin.id,
+      email: admin.email,
+      name: admin.name,
+      role: admin.role,
+      teamId: admin.team_id,
+      teamRole: admin.team_role || 'member'
+    },
     process.env.JWT_SECRET,
     { expiresIn }
   );
+}
+
+function adminResponse(admin) {
+  return {
+    id: admin.id,
+    email: admin.email,
+    name: admin.name,
+    role: admin.role,
+    teamId: admin.team_id,
+    teamRole: admin.team_role || 'member',
+    teamName: admin.team_name || null,
+    teamSlug: admin.team_slug || null
+  };
 }
 
 // POST /api/auth/login
@@ -29,7 +49,10 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     const { rows } = await pool.query(
-      'SELECT * FROM admin_users WHERE email = $1',
+      `SELECT au.*, t.name as team_name, t.slug as team_slug
+       FROM admin_users au
+       LEFT JOIN teams t ON t.id = au.team_id
+       WHERE au.email = $1`,
       [email.toLowerCase().trim()]
     );
 
@@ -53,7 +76,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
         process.env.JWT_SECRET,
         { expiresIn: '15m' }
       );
-      return res.json({ mustSetPassword: true, token, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } });
+      return res.json({ mustSetPassword: true, token, admin: adminResponse(admin) });
     }
 
     // Normal login: password required
@@ -67,7 +90,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     const token = signToken(admin);
-    res.json({ token, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } });
+    res.json({ token, admin: adminResponse(admin) });
   } catch (err) {
     next(err);
   }
@@ -173,12 +196,18 @@ router.post('/set-password', async (req, res, next) => {
       [hash, adminId]
     );
 
-    // Fetch updated admin for token
-    const { rows } = await pool.query('SELECT * FROM admin_users WHERE id = $1', [adminId]);
+    // Fetch updated admin for token (with team info)
+    const { rows } = await pool.query(
+      `SELECT au.*, t.name as team_name, t.slug as team_slug
+       FROM admin_users au
+       LEFT JOIN teams t ON t.id = au.team_id
+       WHERE au.id = $1`,
+      [adminId]
+    );
     const admin = rows[0];
     const token = signToken(admin);
 
-    res.json({ token, admin: { id: admin.id, email: admin.email, name: admin.name, role: admin.role } });
+    res.json({ token, admin: adminResponse(admin) });
   } catch (err) {
     next(err);
   }

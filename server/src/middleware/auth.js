@@ -25,4 +25,20 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { requireAdmin, requireRole };
+// Requires team lead or super admin
+function requireTeamLead(req, res, next) {
+  if (req.admin.role === 'admin' || req.admin.teamRole === 'lead') {
+    return next();
+  }
+  return res.status(403).json({ error: 'Team lead access required' });
+}
+
+// Helper: resolve effective teamId from JWT or query param override (super admin only)
+function getEffectiveTeamId(req) {
+  if (req.admin.role === 'admin' && req.query.team_id) {
+    return parseInt(req.query.team_id);
+  }
+  return req.admin.teamId;
+}
+
+module.exports = { requireAdmin, requireRole, requireTeamLead, getEffectiveTeamId };

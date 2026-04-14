@@ -16,7 +16,7 @@ router.post('/', async (req, res, next) => {
   const client = await pool.connect();
 
   try {
-    let { guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, plan, meeting_type_id, addons, staff_member_id } = req.body;
+    let { guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, plan, meeting_type_id, addons, staff_member_id, team } = req.body;
 
     // Sanitize string inputs to prevent XSS in emails/calendar events
     guest_name = stripHtml(guest_name);
@@ -49,6 +49,20 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Cannot book a slot in the past', code: 'SLOT_IN_PAST' });
     }
 
+    // Resolve team from slug (default to first team if not specified for backwards compat)
+    let teamId;
+    if (team) {
+      const { rows: teamRows } = await pool.query('SELECT id FROM teams WHERE slug = $1', [team]);
+      if (teamRows.length > 0) {
+        teamId = teamRows[0].id;
+      }
+    }
+    if (!teamId) {
+      // Fall back to default team (lowest id)
+      const { rows: defaultTeam } = await pool.query('SELECT id FROM teams ORDER BY id LIMIT 1');
+      if (defaultTeam.length > 0) teamId = defaultTeam[0].id;
+    }
+
     await client.query('BEGIN');
 
     // Advisory lock: MD5 hash of slot times to avoid collisions
@@ -70,17 +84,17 @@ router.post('/', async (req, res, next) => {
       }
     }
 
-    // Assign a staff member: use specified staff if provided, otherwise weighted distribution
+    // Assign a staff member: use specified staff if provided, otherwise weighted distribution (team-scoped)
     let assignedStaff;
     if (staff_member_id) {
-      const activeStaff = await staffService.getActiveStaffWithCalendar();
+      const activeStaff = await staffService.getActiveStaffWithCalendar(teamId);
       assignedStaff = activeStaff.find(s => s.id === parseInt(staff_member_id, 10)) || null;
       if (!assignedStaff) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Requested staff member is not available', code: 'INVALID_STAFF' });
       }
     } else {
-      assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end, bufferMinutes, maxDailyMeetings);
+      assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end, bufferMinutes, maxDailyMeetings, { teamId, meetingTypeId: meeting_type_id ? parseInt(meeting_type_id, 10) : undefined });
     }
 
     // Check for conflicting confirmed bookings (including buffer zone)
@@ -106,12 +120,12 @@ router.post('/', async (req, res, next) => {
       return res.status(409).json({ error: 'This time slot is no longer available. Please select another slot.', code: 'SLOT_CONFLICT' });
     }
 
-    // Insert the booking
+    // Insert the booking (team-scoped)
     const { rows } = await client.query(
-      `INSERT INTO bookings (guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, staff_member_id, plan, meeting_type_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO bookings (guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, staff_member_id, plan, meeting_type_id, team_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
-      [guest_name, guest_email, guest_phone || null, venue_name || null, venue_address || null, company || null, slot_start, slot_end, guest_tz || 'UTC', assignedStaff ? assignedStaff.id : null, plan || null, meeting_type_id || null]
+      [guest_name, guest_email, guest_phone || null, venue_name || null, venue_address || null, company || null, slot_start, slot_end, guest_tz || 'UTC', assignedStaff ? assignedStaff.id : null, plan || null, meeting_type_id || null, teamId]
     );
 
     await client.query('COMMIT');

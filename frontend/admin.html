@@ -59,6 +59,24 @@ body{
 .hdr-title span{
   color:var(--teal);
 }
+.hdr-right{
+  display:flex;align-items:center;gap:12px;
+}
+.team-picker{
+  position:relative;display:none;
+}
+.team-picker select{
+  padding:6px 28px 6px 10px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-family:inherit;font-size:13px;font-weight:500;
+  color:var(--text);background:var(--card);
+  cursor:pointer;outline:none;transition:var(--tr);
+  appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717A' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;
+}
+.team-picker select:hover{border-color:var(--teal)}
+.team-picker select:focus{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-10)}
 .btn-logout{
   padding:8px 20px;border:1.5px solid var(--border);
   border-radius:var(--r-pill);background:transparent;
@@ -512,11 +530,77 @@ tbody tr:hover{background:var(--card)}
 }
 #tab-meetings .mt-duration-badge svg{width:14px;height:14px;color:var(--text-mid)}
 
+/* ===== TEAM CARDS (Admin accordion) ===== */
+.team-card{
+  background:var(--white);
+  border:1px solid var(--border-lt);
+  border-radius:var(--r);
+  margin-bottom:12px;
+  box-shadow:0 1px 4px rgba(0,0,0,0.04);
+  overflow:hidden;
+}
+.team-card-header{
+  display:flex;align-items:center;gap:12px;
+  padding:16px 20px;cursor:pointer;
+  transition:background .15s ease;user-select:none;
+}
+.team-card-header:hover{background:#f8f8f8}
+.team-card .chevron{
+  width:16px;height:16px;color:var(--text-light);
+  transition:transform .2s ease;flex-shrink:0;
+}
+.team-card.open .chevron{transform:rotate(90deg)}
+.team-card-name{font-size:15px;font-weight:600;color:var(--text)}
+.team-badge{
+  display:inline-block;padding:2px 10px;
+  border-radius:var(--r-pill);font-size:11px;font-weight:600;
+  background:var(--teal-10);color:var(--teal);
+}
+.team-card-lead{
+  font-size:13px;color:var(--text-mid);margin-left:auto;
+  white-space:nowrap;
+}
+.team-card-body{
+  max-height:0;overflow:hidden;
+  transition:max-height .3s ease;
+}
+.team-card.open .team-card-body{max-height:2000px}
+.team-card-body .tbl-wrap{
+  border-radius:0;box-shadow:none;
+  border-top:1px solid var(--border-lt);
+}
+.team-card-footer{
+  display:flex;gap:8px;padding:12px 20px;
+  border-top:1px solid var(--border-lt);
+  background:var(--card);
+}
+.team-form-wrap{
+  padding:24px;background:var(--card);
+  border-top:1px solid var(--border-lt);
+  display:none;
+}
+.team-form-wrap.open{display:block;animation:fadeUp .2s ease}
+.team-form-wrap label{
+  display:block;font-size:12px;font-weight:500;
+  color:var(--text-mid);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px;
+}
+.team-form-wrap input{
+  width:100%;padding:10px 12px;
+  border:1.5px solid var(--border);
+  border-radius:var(--r-sm);
+  font-family:inherit;font-size:14px;color:var(--text);
+  background:var(--white);outline:none;transition:var(--tr);
+  margin-bottom:12px;
+}
+.team-form-wrap input:focus{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-10)}
+.team-form-actions{display:flex;gap:8px}
+
 /* ===== RESPONSIVE ===== */
 @media(max-width:768px){
   .hdr-in{padding:0 16px}
   .hdr-title{font-size:16px}
   .btn-logout{padding:6px 14px;font-size:12px}
+  .team-picker select{font-size:12px;padding:4px 24px 4px 8px}
   .dash{padding:20px 16px 60px}
   .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
   table{min-width:600px}
@@ -624,10 +708,15 @@ tbody tr:hover{background:var(--card)}
   <header class="hdr">
     <div class="hdr-in">
       <div class="hdr-title">Meetings <span>Admin</span></div>
-      <button class="btn-logout" id="logoutBtn">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:middle"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Logout
-      </button>
+      <div class="hdr-right">
+        <div class="team-picker" id="teamPicker">
+          <select id="teamSelect"></select>
+        </div>
+        <button class="btn-logout" id="logoutBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;vertical-align:middle"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Logout
+        </button>
+      </div>
     </div>
   </header>
 
@@ -847,73 +936,107 @@ tbody tr:hover{background:var(--card)}
       </div>
     </div>
 
-    <!-- ===== STAFF TAB ===== -->
+    <!-- ===== STAFF / TEAMS TAB ===== -->
     <div class="tab-panel" id="tab-staff">
-      <div class="tbl-wrap">
-        <div class="tbl-bar">
-          <h2>Staff Members</h2>
-          <button class="btn-sm btn-sm-teal" id="addStaffBtn">
+
+      <!-- Teams view (admin only) -->
+      <div id="teamsView" style="display:none">
+        <div class="tbl-bar" style="background:transparent;border:none;padding:0 0 16px">
+          <h2>Teams</h2>
+        </div>
+        <div id="teamsContainer"></div>
+        <div style="padding:16px 0 24px">
+          <button class="btn-sm btn-sm-teal" id="addTeamBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Staff
+            Add a New Team
           </button>
         </div>
+        <!-- Add team inline form (hidden by default) -->
+        <div class="team-form-wrap" id="addTeamForm">
+          <div class="if-title" id="teamFormTitle">Add a New Team</div>
+          <label>Team Name</label>
+          <input type="text" id="team-name" placeholder="e.g. Sales">
+          <label>Slug</label>
+          <input type="text" id="team-slug" placeholder="auto-generated">
+          <label>Team Lead</label>
+          <select id="team-lead">
+            <option value="">-- No lead --</option>
+          </select>
+          <div class="team-form-actions">
+            <button class="btn-sm btn-sm-teal" id="teamSubmitBtn">Create Team</button>
+            <button class="btn-sm btn-sm-outline" id="teamCancelBtn">Cancel</button>
+          </div>
+        </div>
+      </div>
 
-        <!-- Inline Add/Edit Form -->
-        <div class="inline-form" id="staffForm">
-          <div class="if-title" id="staffFormTitle">Add New Staff Member</div>
-          <div class="if-grid">
-            <div class="if-group">
-              <label>Name</label>
-              <input class="if-input" type="text" id="stf-name" placeholder="e.g. John Smith">
-            </div>
-            <div class="if-group">
-              <label>Email</label>
-              <input class="if-input" type="email" id="stf-email" placeholder="john@example.com">
-            </div>
-            <div class="if-group">
-              <label>Meeting %</label>
-              <input class="if-input" type="number" id="stf-pct" value="100" min="0" max="100">
-            </div>
-            <div class="if-group" id="stf-gcal-group" style="display:none">
-              <label>Google Calendar</label>
-              <div id="stf-gcal-info" style="font-size:13px;color:var(--text-mid);margin-bottom:6px">Save the staff member first, then connect.</div>
-              <button class="btn-sm btn-sm-teal" type="button" id="stf-gcal-connect" style="display:none" onclick="connectStaffGoogle()">Connect Google Calendar</button>
-              <button class="btn-sm btn-sm-danger" type="button" id="stf-gcal-disconnect" style="display:none" onclick="disconnectStaffGoogle()">Disconnect</button>
-              <input type="hidden" id="stf-gcal" value="">
-            </div>
-            <div class="if-group">
-              <label>Active</label>
-              <div class="cdrop" id="stf-active" data-value="true">
-                <button class="cdrop-btn" type="button" onclick="togDrop('stf-active')"><span>Yes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
-                <div class="cdrop-list">
-                  <div class="cdrop-opt sel" data-val="true" onclick="selOpt('stf-active',this)">Yes</div>
-                  <div class="cdrop-opt" data-val="false" onclick="selOpt('stf-active',this)">No</div>
+      <!-- Staff view (team leads) -->
+      <div id="staffView">
+        <div class="tbl-wrap">
+          <div class="tbl-bar">
+            <h2>Staff Members</h2>
+            <button class="btn-sm btn-sm-teal" id="addStaffBtn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Staff
+            </button>
+          </div>
+
+          <!-- Inline Add/Edit Form -->
+          <div class="inline-form" id="staffForm">
+            <div class="if-title" id="staffFormTitle">Add New Staff Member</div>
+            <div class="if-grid">
+              <div class="if-group">
+                <label>Name</label>
+                <input class="if-input" type="text" id="stf-name" placeholder="e.g. John Smith">
+              </div>
+              <div class="if-group">
+                <label>Email</label>
+                <input class="if-input" type="email" id="stf-email" placeholder="john@example.com">
+              </div>
+              <div class="if-group">
+                <label>Meeting %</label>
+                <input class="if-input" type="number" id="stf-pct" value="100" min="0" max="100">
+              </div>
+              <div class="if-group" id="stf-gcal-group" style="display:none">
+                <label>Google Calendar</label>
+                <div id="stf-gcal-info" style="font-size:13px;color:var(--text-mid);margin-bottom:6px">Save the staff member first, then connect.</div>
+                <button class="btn-sm btn-sm-teal" type="button" id="stf-gcal-connect" style="display:none" onclick="connectStaffGoogle()">Connect Google Calendar</button>
+                <button class="btn-sm btn-sm-danger" type="button" id="stf-gcal-disconnect" style="display:none" onclick="disconnectStaffGoogle()">Disconnect</button>
+                <input type="hidden" id="stf-gcal" value="">
+              </div>
+              <div class="if-group">
+                <label>Active</label>
+                <div class="cdrop" id="stf-active" data-value="true">
+                  <button class="cdrop-btn" type="button" onclick="togDrop('stf-active')"><span>Yes</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+                  <div class="cdrop-list">
+                    <div class="cdrop-opt sel" data-val="true" onclick="selOpt('stf-active',this)">Yes</div>
+                    <div class="cdrop-opt" data-val="false" onclick="selOpt('stf-active',this)">No</div>
+                  </div>
                 </div>
               </div>
             </div>
+            <div class="if-actions">
+              <button class="btn-sm btn-sm-teal" id="staffSubmitBtn">Save Staff</button>
+              <button class="btn-sm btn-sm-outline" id="staffCancelBtn">Cancel</button>
+            </div>
           </div>
-          <div class="if-actions">
-            <button class="btn-sm btn-sm-teal" id="staffSubmitBtn">Save Staff</button>
-            <button class="btn-sm btn-sm-outline" id="staffCancelBtn">Cancel</button>
-          </div>
-        </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Meeting %</th>
-              <th>Calendar</th>
-              <th>Onboarding</th>
-              <th>Status</th>
-              <th style="text-align:right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="staffBody">
-            <tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>
-          </tbody>
-        </table>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Meeting %</th>
+                <th>Calendar</th>
+                <th>Onboarding</th>
+                <th>Status</th>
+                <th style="text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="staffBody">
+              <tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -1144,6 +1267,77 @@ function getTokenRole() {
   } catch { return 'restricted'; }
 }
 
+/* ---------- Team helpers ---------- */
+let selectedTeamId = null;
+let selectedTeamSlug = null;
+let allTeams = [];
+
+function getAdminTeamInfo() {
+  const raw = localStorage.getItem('umai_admin_team');
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+function setAdminTeamInfo(info) {
+  localStorage.setItem('umai_admin_team', JSON.stringify(info));
+}
+function clearAdminTeamInfo() {
+  localStorage.removeItem('umai_admin_team');
+}
+
+async function initTeamPicker() {
+  const role = getTokenRole();
+  const teamInfo = getAdminTeamInfo();
+  const picker = document.getElementById('teamPicker');
+  const select = document.getElementById('teamSelect');
+
+  // Default to admin's own team
+  if (teamInfo) {
+    selectedTeamId = teamInfo.teamId;
+    selectedTeamSlug = teamInfo.teamSlug;
+  }
+
+  if (role !== 'admin') {
+    // Team leads only see their own team
+    picker.style.display = 'none';
+    return;
+  }
+
+  // Super admin: fetch all teams and show picker
+  try {
+    allTeams = await apiFetch('/api/admin/teams');
+    if (!allTeams || allTeams.length <= 1) {
+      picker.style.display = 'none';
+      return;
+    }
+    select.innerHTML = allTeams.map(t =>
+      '<option value="' + t.id + '" data-slug="' + (t.slug || '') + '"' +
+      (t.id === selectedTeamId ? ' selected' : '') +
+      '>' + escHtml(t.name) + '</option>'
+    ).join('');
+    picker.style.display = '';
+
+    select.addEventListener('change', function() {
+      const opt = select.options[select.selectedIndex];
+      selectedTeamId = parseInt(opt.value);
+      selectedTeamSlug = opt.dataset.slug || '';
+      // Reload all data for new team
+      reloadAllData();
+    });
+  } catch (err) {
+    console.warn('Failed to load teams:', err.message);
+    picker.style.display = 'none';
+  }
+}
+
+function reloadAllData() {
+  const role = getTokenRole();
+  loadSchedules();
+  loadBlocked();
+  loadBookings();
+  loadMeetingTypes();
+  if (role === 'admin') loadTeams();
+}
+
 async function apiFetch(path, opts = {}) {
   const token = getToken();
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
@@ -1151,6 +1345,11 @@ async function apiFetch(path, opts = {}) {
   // Convert outgoing body keys to snake_case
   if (opts.body && typeof opts.body === 'string') {
     try { opts.body = JSON.stringify(keysToSnake(JSON.parse(opts.body))); } catch(e) {}
+  }
+  // Inject team_id on admin API calls (skip /auth/, /teams endpoints, and paths that already have team_id)
+  if (selectedTeamId && path.startsWith('/api/admin/') && !path.includes('/auth/') && !path.startsWith('/api/admin/teams') && !path.includes('team_id=')) {
+    const sep = path.includes('?') ? '&' : '?';
+    path = path + sep + 'team_id=' + selectedTeamId;
   }
   const res = await fetch(API_BASE + path, { ...opts, headers });
   if (res.status === 401 && !path.includes('/auth/login')) {
@@ -1190,23 +1389,42 @@ function showDash() {
   hideAllViews();
   dashView.style.display = 'block';
 
+  // Initialize team from stored info
+  const teamInfo = getAdminTeamInfo();
+  if (teamInfo) {
+    selectedTeamId = teamInfo.teamId;
+    selectedTeamSlug = teamInfo.teamSlug;
+  }
+
   // Role-based tab visibility
   const role = getTokenRole();
   const staffBtn = document.querySelector('.tab-btn[data-tab="staff"]');
   const staffPanel = document.getElementById('tab-staff');
+  const teamsView = document.getElementById('teamsView');
+  const staffView = document.getElementById('staffView');
   if (role !== 'admin') {
     staffBtn.style.display = 'none';
     staffPanel.style.display = 'none';
+    // Team leads: show staff view
+    teamsView.style.display = 'none';
+    staffView.style.display = '';
   } else {
     staffBtn.style.display = '';
+    staffBtn.textContent = 'Teams';
     staffPanel.style.display = '';
-    loadStaff();
+    // Admins: show teams view
+    teamsView.style.display = '';
+    staffView.style.display = 'none';
+    loadTeams();
   }
 
   loadSchedules();
   loadBlocked();
   loadBookings();
   loadMeetingTypes();
+
+  // Init team picker (async, non-blocking)
+  initTeamPicker();
 }
 
 function showSetPw(token, isReset) {
@@ -1670,6 +1888,7 @@ loginForm.addEventListener('submit', async e => {
         showSetPw(data.token, false);
       } else {
         setToken(data.token);
+        if (data.admin && data.admin.teamId) setAdminTeamInfo({ teamId: data.admin.teamId, teamRole: data.admin.teamRole, teamName: data.admin.teamName, teamSlug: data.admin.teamSlug });
         showDash();
       }
     } else {
@@ -1679,6 +1898,7 @@ loginForm.addEventListener('submit', async e => {
         body: JSON.stringify({ email: loginEmail.value.trim(), password: loginPass.value })
       });
       setToken(data.token);
+      if (data.admin && data.admin.teamId) setAdminTeamInfo({ teamId: data.admin.teamId, teamRole: data.admin.teamRole, teamName: data.admin.teamName, teamSlug: data.admin.teamSlug });
       showDash();
     }
   } catch (err) {
@@ -1733,6 +1953,7 @@ setPwForm.addEventListener('submit', async e => {
 
     const data = await apiFetch('/api/auth/set-password', opts);
     setToken(data.token);
+    if (data.admin && data.admin.teamId) setAdminTeamInfo({ teamId: data.admin.teamId, teamRole: data.admin.teamRole, teamName: data.admin.teamName, teamSlug: data.admin.teamSlug });
     showToast('Password set successfully');
     showDash();
   } catch (err) {
@@ -1784,6 +2005,10 @@ forgotForm.addEventListener('submit', async e => {
    ================================================================ */
 logoutBtn.addEventListener('click', () => {
   clearToken();
+  clearAdminTeamInfo();
+  selectedTeamId = null;
+  selectedTeamSlug = null;
+  allTeams = [];
   showLogin();
   showToast('Logged out successfully');
 });
@@ -1803,7 +2028,7 @@ $$('.tab-btn').forEach(btn => {
     if (tab === 'bookings') loadBookings();
     else if (tab === 'schedules') loadSchedules();
     else if (tab === 'blocked') loadBlocked();
-    else if (tab === 'staff') loadStaff();
+    else if (tab === 'staff') { if (getTokenRole() === 'admin') loadTeams(); else loadStaff(); }
     else if (tab === 'meetings') loadMeetingTypes();
   });
 });
@@ -2046,6 +2271,270 @@ blockedSubmitBtn.addEventListener('click', async () => {
 });
 
 /* ================================================================
+   TEAMS (Admin accordion)
+   ================================================================ */
+let teamsWithStaff = [];
+let currentTeamIdForStaff = null; // track which team we're adding staff to
+
+const teamsContainer = $('#teamsContainer');
+const addTeamBtn = $('#addTeamBtn');
+const addTeamForm = $('#addTeamForm');
+const teamNameInput = $('#team-name');
+const teamSlugInput = $('#team-slug');
+const teamSubmitBtn = $('#teamSubmitBtn');
+const teamCancelBtn = $('#teamCancelBtn');
+const teamFormTitle = $('#teamFormTitle');
+const teamLeadSelect = $('#team-lead');
+let editingTeamId = null;
+
+// Populate team lead dropdown from already-loaded teamsWithStaff data
+function populateTeamLeadDropdown(teamId, selectedLeadId) {
+  teamLeadSelect.innerHTML = '<option value="">-- No lead --</option>';
+  // If editing, show staff from that team. If creating, show all staff.
+  var staffList = [];
+  if (teamId) {
+    var team = teamsWithStaff.find(function(t) { return t.id === teamId; });
+    if (team && team.staff) staffList = team.staff;
+  } else {
+    // For new teams, show staff from all teams
+    teamsWithStaff.forEach(function(t) {
+      if (t.staff) t.staff.forEach(function(s) {
+        if (!staffList.find(function(x) { return x.id === s.id; })) staffList.push(s);
+      });
+    });
+  }
+  staffList.forEach(function(s) {
+    var opt = document.createElement('option');
+    var uid = s.adminUserId || s.id;
+    opt.value = uid;
+    opt.textContent = escHtml(s.name) + ' (' + escHtml(s.email) + ')';
+    if (selectedLeadId && String(uid) === String(selectedLeadId)) opt.selected = true;
+    teamLeadSelect.appendChild(opt);
+  });
+}
+
+async function loadTeams() {
+  teamsContainer.innerHTML = '<div style="text-align:center;padding:24px"><div class="spinner spinner-dark"></div></div>';
+  try {
+    const teams = await apiFetch('/api/admin/teams');
+    const results = await Promise.all(teams.map(async (team) => {
+      const staff = await apiFetch('/api/admin/staff?team_id=' + team.id);
+      return { ...team, staff: staff || [] };
+    }));
+    teamsWithStaff = results;
+    renderTeams(teamsWithStaff);
+  } catch (err) {
+    teamsContainer.innerHTML = '<div class="empty-state"><p>Failed to load teams</p></div>';
+  }
+}
+
+function renderTeams(teams) {
+  if (!teams || teams.length === 0) {
+    teamsContainer.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><p>No teams yet. Click "Add a New Team" to create one.</p></div>';
+    return;
+  }
+  teamsContainer.innerHTML = teams.map(team => {
+    const count = team.staff ? team.staff.length : 0;
+    const lead = team.staff ? team.staff.find(s => s.isLead || s.is_lead) : null;
+    const leadName = lead ? escHtml(lead.name) : '';
+    const staffRows = renderTeamStaffRows(team.staff || []);
+    const slug = team.slug || '';
+    return `
+    <div class="team-card" data-team-id="${team.id}">
+      <div class="team-card-header" onclick="toggleTeamCard(this)">
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+        <span class="team-card-name">${escHtml(team.name)}</span>
+        <span class="team-badge">${count} member${count !== 1 ? 's' : ''}</span>
+        ${leadName ? '<span class="team-card-lead">Lead: ' + leadName + '</span>' : ''}
+      </div>
+      <div class="team-card-body">
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Meeting %</th>
+                <th>Calendar</th>
+                <th>Onboarding</th>
+                <th>Status</th>
+                <th style="text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>${staffRows}</tbody>
+          </table>
+        </div>
+        <div class="team-card-footer">
+          <button class="btn-sm btn-sm-teal" onclick="addStaffToTeam('${team.id}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Staff
+          </button>
+          <button class="btn-sm btn-sm-outline" onclick="showTeamBookingLinks('${escHtml(slug)}', '${escHtml(team.name)}')">Booking Links</button>
+          <button class="btn-sm btn-sm-outline" onclick="editTeam('${team.id}')">Edit Team</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderTeamStaffRows(staffList) {
+  if (!staffList || staffList.length === 0) {
+    return '<tr><td colspan="7"><div class="empty-state" style="padding:24px"><p>No staff members yet</p></div></td></tr>';
+  }
+  return staffList.map(s => {
+    const hasCalendar = s.googleCalendarId || s.google_calendar_id;
+    const hasOAuth = s.googleRefreshToken || s.google_refresh_token;
+    const calendarLabel = hasOAuth ? 'Connected' : (hasCalendar ? 'Legacy' : 'Not Connected');
+    const calendarBadge = hasOAuth ? 'badge-confirmed' : (hasCalendar ? 'badge-active' : 'badge-inactive');
+
+    const obStatus = s.onboardingStatus || s.onboarding_status || 'pending';
+    let obBadge, obLabel, obAction = '';
+    if (obStatus === 'completed') {
+      obBadge = 'badge-confirmed'; obLabel = 'Onboarded';
+    } else if (obStatus === 'partial') {
+      obBadge = 'badge-active'; obLabel = 'Partial';
+    } else {
+      obBadge = 'badge-inactive'; obLabel = 'Pending';
+    }
+    if (obStatus !== 'completed') {
+      const token = s.inviteToken || s.invite_token;
+      const expired = s.inviteTokenExpired ?? s.invite_token_expired ?? true;
+      if (token && !expired) {
+        obAction = `<button class="btn-sm btn-sm-outline" style="margin-left:6px;font-size:11px;padding:2px 8px" onclick="copyInviteLink('${token}')">Copy Link</button>`;
+      } else {
+        obAction = `<button class="btn-sm btn-sm-outline" style="margin-left:6px;font-size:11px;padding:2px 8px" onclick="regenerateInvite('${s.id}')">New Link</button>`;
+      }
+    }
+
+    return `
+    <tr>
+      <td><strong>${escHtml(s.name || '-')}</strong></td>
+      <td>${escHtml(s.email || '-')}</td>
+      <td>${s.meetingPct != null ? s.meetingPct : (s.meeting_pct != null ? s.meeting_pct : '-')}%</td>
+      <td>
+        <span class="badge ${calendarBadge}">${calendarLabel}</span>
+        ${!hasOAuth ? `<button class="btn-sm btn-sm-outline" style="margin-left:6px;font-size:11px;padding:2px 8px" onclick="connectStaffGoogleById('${s.id}')">Connect</button>` : ''}
+      </td>
+      <td><span class="badge ${obBadge}">${obLabel}</span>${obAction}</td>
+      <td><span class="badge ${(s.isActive ?? s.is_active) ? 'badge-active' : 'badge-inactive'}">${(s.isActive ?? s.is_active) ? 'Active' : 'Inactive'}</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn-sm btn-sm-teal" onclick="showStaffLinks('${s.id}', '${escHtml(s.name)}')">Links</button>
+        <button class="btn-sm btn-sm-outline" onclick="editStaff('${s.id}')">Edit</button>
+        <button class="btn-sm btn-sm-danger" onclick="deleteStaff('${s.id}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+window.toggleTeamCard = function(header) {
+  header.closest('.team-card').classList.toggle('open');
+};
+
+window.addStaffToTeam = function(teamId) {
+  currentTeamIdForStaff = teamId;
+  // Show the existing staff form in #staffView context
+  editingStaffId = null;
+  staffFormTitle.textContent = 'Add New Staff Member';
+  staffSubmitBtn.textContent = 'Save Staff';
+  $('#stf-name').value = '';
+  $('#stf-email').value = '';
+  $('#stf-pct').value = '100';
+  try { $('#stf-max-daily').value = '0'; } catch(e) {}
+  $('#stf-gcal').value = '';
+  setDrop('stf-active', 'true');
+  $('#stf-gcal-group').style.display = 'none';
+  // Show staffView temporarily for the form, then hide after save
+  document.getElementById('staffView').style.display = '';
+  staffForm.classList.add('open');
+  staffForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
+window.showTeamBookingLinks = function(slug, teamName) {
+  if (!slug) { showToast('This team has no slug configured', 'error'); return; }
+  var body = document.getElementById('linksBody');
+  document.getElementById('linksTitle').textContent = teamName + ' - Booking Links';
+  window._linkIdx = 0;
+  var base = window.location.origin + '/book.html';
+  var teamParam = '&team=' + encodeURIComponent(slug);
+  body.innerHTML =
+    window._linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + teamParam) +
+    window._linkRow('Online only', base + '?plan=essencial&type=online' + teamParam) +
+    window._linkRow('In-Person only', base + '?plan=essencial&type=in_person' + teamParam) +
+    window._linkRow('Freemium only', base + '?plan=mini&type=Freemium' + teamParam);
+  document.getElementById('linksOverlay').classList.add('open');
+};
+
+window.editTeam = function(teamId) {
+  const team = teamsWithStaff.find(t => String(t.id) === String(teamId));
+  if (!team) return;
+  editingTeamId = teamId;
+  teamFormTitle.textContent = 'Edit Team';
+  teamSubmitBtn.textContent = 'Update Team';
+  teamNameInput.value = team.name || '';
+  teamSlugInput.value = team.slug || '';
+  populateTeamLeadDropdown(teamId, team.leadId);
+  addTeamForm.classList.add('open');
+  addTeamForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+};
+
+// Auto-generate slug from team name
+teamNameInput.addEventListener('input', function() {
+  if (!editingTeamId) {
+    teamSlugInput.value = this.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+});
+
+addTeamBtn.addEventListener('click', () => {
+  editingTeamId = null;
+  teamFormTitle.textContent = 'Add a New Team';
+  teamSubmitBtn.textContent = 'Create Team';
+  teamNameInput.value = '';
+  teamSlugInput.value = '';
+  populateTeamLeadDropdown(null, null);
+  addTeamForm.classList.add('open');
+  addTeamForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
+teamCancelBtn.addEventListener('click', () => {
+  addTeamForm.classList.remove('open');
+  editingTeamId = null;
+});
+
+teamSubmitBtn.addEventListener('click', async () => {
+  const name = teamNameInput.value.trim();
+  const slug = teamSlugInput.value.trim();
+  if (!name) { showToast('Team name is required', 'error'); return; }
+
+  const leadId = teamLeadSelect.value ? parseInt(teamLeadSelect.value) : null;
+
+  teamSubmitBtn.disabled = true;
+  try {
+    if (editingTeamId) {
+      await apiFetch('/api/admin/teams/' + editingTeamId, {
+        method: 'PUT',
+        body: JSON.stringify({ name, slug, lead_id: leadId })
+      });
+      showToast('Team updated');
+    } else {
+      await apiFetch('/api/admin/teams', {
+        method: 'POST',
+        body: JSON.stringify({ name, slug, lead_id: leadId })
+      });
+      showToast('Team created');
+    }
+    addTeamForm.classList.remove('open');
+    editingTeamId = null;
+    loadTeams();
+    // Also refresh the team picker in the header
+    initTeamPicker();
+  } catch (err) {
+    showToast(err.message || 'Failed to save team', 'error');
+  } finally {
+    teamSubmitBtn.disabled = false;
+  }
+});
+
+/* ================================================================
    STAFF
    ================================================================ */
 let staffMembers = [];
@@ -2142,6 +2631,11 @@ addStaffBtn.addEventListener('click', () => {
 staffCancelBtn.addEventListener('click', () => {
   staffForm.classList.remove('open');
   editingStaffId = null;
+  currentTeamIdForStaff = null;
+  // If admin, hide staffView back (it was shown for the form)
+  if (getTokenRole() === 'admin') {
+    document.getElementById('staffView').style.display = 'none';
+  }
 });
 
 window.editStaff = function(id) {
@@ -2194,11 +2688,15 @@ window.copyInviteLink = function(token) {
   });
 };
 
+function refreshStaffOrTeams() {
+  if (getTokenRole() === 'admin') loadTeams(); else loadStaff();
+}
+
 window.regenerateInvite = async function(id) {
   try {
     const data = await apiFetch('/api/admin/staff/' + id + '/invite', { method: 'POST' });
     copyInviteLink(data.inviteToken || data.invite_token);
-    loadStaff();
+    refreshStaffOrTeams();
   } catch (err) {
     showToast(err.message || 'Failed to generate invite link', 'error');
   }
@@ -2210,7 +2708,7 @@ window.deleteStaff = async function(id) {
   try {
     await apiFetch('/api/admin/staff/' + id, { method: 'DELETE' });
     showToast('Staff member deleted');
-    loadStaff();
+    refreshStaffOrTeams();
   } catch (err) {
     showToast(err.message || 'Failed to delete', 'error');
   }
@@ -2226,7 +2724,7 @@ window.connectStaffGoogleById = async function(id) {
       const poll = setInterval(() => {
         if (!popup || popup.closed) {
           clearInterval(poll);
-          loadStaff();
+          refreshStaffOrTeams();
         }
       }, 1000);
     }
@@ -2254,7 +2752,7 @@ window.disconnectStaffGoogle = async function() {
     showToast('Google Calendar disconnected');
     staffForm.classList.remove('open');
     editingStaffId = null;
-    loadStaff();
+    refreshStaffOrTeams();
   } catch (err) {
     showToast(err.message || 'Failed to disconnect', 'error');
   }
@@ -2275,6 +2773,10 @@ staffSubmitBtn.addEventListener('click', async () => {
     max_daily_meetings: parseInt($('#stf-max-daily').value, 10) || 0,
     is_active: getDrop('stf-active') === 'true'
   };
+  // Include team_id when adding staff from a team card
+  if (currentTeamIdForStaff && !editingStaffId) {
+    payload.team_id = parseInt(currentTeamIdForStaff, 10);
+  }
 
   staffSubmitBtn.disabled = true;
   try {
@@ -2285,7 +2787,10 @@ staffSubmitBtn.addEventListener('click', async () => {
       });
       showToast('Staff member updated');
     } else {
-      const newStaff = await apiFetch('/api/admin/staff', {
+      const endpoint = currentTeamIdForStaff
+        ? '/api/admin/staff?team_id=' + currentTeamIdForStaff
+        : '/api/admin/staff';
+      const newStaff = await apiFetch(endpoint, {
         method: 'POST',
         body: JSON.stringify(payload)
       });
@@ -2299,7 +2804,14 @@ staffSubmitBtn.addEventListener('click', async () => {
     }
     staffForm.classList.remove('open');
     editingStaffId = null;
-    loadStaff();
+    // Refresh: admin sees teams, team lead sees staff
+    if (getTokenRole() === 'admin') {
+      currentTeamIdForStaff = null;
+      document.getElementById('staffView').style.display = 'none';
+      loadTeams();
+    } else {
+      loadStaff();
+    }
   } catch (err) {
     showToast(err.message || 'Failed to save', 'error');
   } finally {
@@ -2525,10 +3037,11 @@ window._linkRow = function(label, url) {
 window._linksBlock = function(suffix) {
   var base = window.location.origin + '/book.html';
   var s = suffix || '';
-  return window._linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + s) +
-         window._linkRow('Online only', base + '?plan=essencial&type=online' + s) +
-         window._linkRow('In-Person only', base + '?plan=essencial&type=in_person' + s) +
-         window._linkRow('Freemium only', base + '?plan=mini&type=Freemium' + s);
+  var teamParam = selectedTeamSlug ? '&team=' + encodeURIComponent(selectedTeamSlug) : '';
+  return window._linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + teamParam + s) +
+         window._linkRow('Online only', base + '?plan=essencial&type=online' + teamParam + s) +
+         window._linkRow('In-Person only', base + '?plan=essencial&type=in_person' + teamParam + s) +
+         window._linkRow('Freemium only', base + '?plan=mini&type=Freemium' + teamParam + s);
 };
 
 window.showAllBookingLinks = function() {
