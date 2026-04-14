@@ -1793,6 +1793,14 @@ $$('.tab-btn').forEach(btn => {
     $$('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     $('#tab-' + btn.dataset.tab).classList.add('active');
+
+    // Refresh data when switching tabs
+    var tab = btn.dataset.tab;
+    if (tab === 'bookings') loadBookings();
+    else if (tab === 'schedules') loadSchedules();
+    else if (tab === 'blocked') loadBlocked();
+    else if (tab === 'staff') loadStaff();
+    else if (tab === 'meetings') loadMeetingTypes();
   });
 });
 
