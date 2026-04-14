@@ -1036,7 +1036,7 @@ tbody tr:hover{background:var(--card)}
 
 <!-- ===== LINKS POPUP ===== -->
 <div class="overlay" id="linksOverlay" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="dialog" style="text-align:left;max-width:480px">
+  <div class="dialog" style="text-align:left;max-width:480px;max-height:80vh;overflow-y:auto">
     <h3 id="linksTitle" style="margin-bottom:16px">Booking Links</h3>
     <div id="linksBody"></div>
     <div style="text-align:right;margin-top:20px">
@@ -2099,7 +2099,8 @@ function renderStaff() {
       </td>
       <td><span class="badge ${obBadge}">${obLabel}</span>${obAction}</td>
       <td><span class="badge ${(s.isActive ?? s.is_active) ? 'badge-active' : 'badge-inactive'}">${(s.isActive ?? s.is_active) ? 'Active' : 'Inactive'}</span></td>
-      <td style="text-align:right">
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn-sm btn-sm-teal" onclick="showStaffLinks('${s.id}', '${escHtml(s.name)}')">Links</button>
         <button class="btn-sm btn-sm-outline" onclick="editStaff('${s.id}')">Edit</button>
         <button class="btn-sm btn-sm-danger" onclick="deleteStaff('${s.id}')">Delete</button>
       </td>
@@ -2482,60 +2483,47 @@ function renderMeetingTypes() {
   }).join('');
 }
 
-window.showAllBookingLinks = async function() {
+window._linkIdx = 0;
+window._linkRow = function(label, url) {
+  var idx = window._linkIdx;
+  window['_linkUrl' + idx] = url;
+  var h = '<div class="link-row">' +
+    '<div style="min-width:0;flex:1">' +
+      '<div class="link-row-label">' + escHtml(label) + '</div>' +
+      '<div class="link-row-url">' + escHtml(url) + '</div>' +
+    '</div>' +
+    '<div class="link-row-actions">' +
+      '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + idx + ')">Copy</button>' +
+      '<a href="' + url + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
+    '</div>' +
+  '</div>';
+  window._linkIdx++;
+  return h;
+};
+
+window._linksBlock = function(suffix) {
+  var base = window.location.origin + '/book.html';
+  var s = suffix || '';
+  return window._linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + s) +
+         window._linkRow('Online only', base + '?plan=essencial&type=online' + s) +
+         window._linkRow('In-Person only', base + '?plan=essencial&type=in_person' + s) +
+         window._linkRow('Freemium only', base + '?plan=mini&type=Freemium' + s);
+};
+
+window.showAllBookingLinks = function() {
   var body = document.getElementById('linksBody');
   document.getElementById('linksTitle').textContent = 'Booking Links';
-  body.innerHTML = '<div style="text-align:center;padding:16px"><div class="spinner spinner-dark" style="margin:0 auto"></div></div>';
+  window._linkIdx = 0;
+  body.innerHTML = window._linksBlock();
   document.getElementById('linksOverlay').classList.add('open');
+};
 
-  var base = window.location.origin + '/book.html';
-  var linkIdx = 0;
-
-  function linkRow(label, url) {
-    window['_linkUrl' + linkIdx] = url;
-    var h = '<div class="link-row">' +
-      '<div style="min-width:0;flex:1">' +
-        '<div class="link-row-label">' + escHtml(label) + '</div>' +
-        '<div class="link-row-url">' + escHtml(url) + '</div>' +
-      '</div>' +
-      '<div class="link-row-actions">' +
-        '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + linkIdx + ')">Copy</button>' +
-        '<a href="' + url + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
-      '</div>' +
-    '</div>';
-    linkIdx++;
-    return h;
-  }
-
-  function linksBlock(suffix) {
-    var s = suffix || '';
-    return linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + s) +
-           linkRow('Online only', base + '?plan=essencial&type=online' + s) +
-           linkRow('In-Person only', base + '?plan=essencial&type=in_person' + s) +
-           linkRow('Freemium only', base + '?plan=mini&type=Freemium' + s);
-  }
-
-  var html = '<div style="margin-bottom:20px">';
-  html += '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">General</div>';
-  html += linksBlock();
-  html += '</div>';
-
-  // Fetch staff members for personal links
-  try {
-    var staff = await apiFetch('/api/admin/staff');
-    var active = (staff || []).filter(function(s) { return s.isActive !== false && s.is_active !== false; });
-    active.forEach(function(s) {
-      var staffSuffix = '&staff_id=' + s.id;
-      html += '<div style="margin-bottom:20px">';
-      html += '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">' + escHtml(s.name) + '</div>';
-      html += linksBlock(staffSuffix);
-      html += '</div>';
-    });
-  } catch (e) {
-    html += '<p style="color:var(--text-light);font-size:13px">Could not load staff members.</p>';
-  }
-
-  body.innerHTML = html;
+window.showStaffLinks = function(staffId, staffName) {
+  var body = document.getElementById('linksBody');
+  document.getElementById('linksTitle').textContent = staffName + ' - Personal Links';
+  window._linkIdx = 0;
+  body.innerHTML = window._linksBlock('&staff_id=' + staffId);
+  document.getElementById('linksOverlay').classList.add('open');
 };
 
 window.copyLinkUrl = function(url) {
