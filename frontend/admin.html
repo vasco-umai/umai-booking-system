@@ -948,6 +948,10 @@ tbody tr:hover{background:var(--card)}
               <input class="if-input" type="number" id="mt-duration" value="120" min="15" max="480">
             </div>
             <div class="if-group">
+              <label>Buffer (min before &amp; after)</label>
+              <input class="if-input" type="number" id="mt-buffer" value="0" min="0" max="120" placeholder="e.g. 15">
+            </div>
+            <div class="if-group">
               <label>Active</label>
               <div class="mt-toggle-row">
                 <div class="mt-toggle on" id="mt-active-toggle" onclick="toggleMtActive()">
@@ -2469,8 +2473,9 @@ function renderMeetingTypes() {
         <td>
           <span class="mt-duration-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            ${mt.durationMinutes} min
+            ${mt.durationMinutes || mt.duration_minutes} min
           </span>
+          ${(mt.bufferMinutes || mt.buffer_minutes) ? '<span style="font-size:11px;color:var(--text-light);margin-left:4px">+' + (mt.bufferMinutes || mt.buffer_minutes) + ' min buffer</span>' : ''}
         </td>
         <td><div class="mt-plan-tags">${planTags}</div></td>
         <td><div class="mt-days-pills">${dayPills}</div></td>
@@ -2540,6 +2545,7 @@ addMtypeBtn.addEventListener('click', function() {
   document.getElementById('mt-name').value = '';
   document.getElementById('mt-label').value = '';
   document.getElementById('mt-duration').value = '120';
+  document.getElementById('mt-buffer').value = '0';
   setMtActive(true);
   // Reset plan chips
   document.querySelectorAll('#mt-plans .mt-chip').forEach(chip => {
@@ -2569,7 +2575,8 @@ window.editMtype = function(id) {
   mtypeFormTitle.textContent = 'Edit Meeting Type';
   document.getElementById('mt-name').value = mt.name || '';
   document.getElementById('mt-label').value = mt.label || '';
-  document.getElementById('mt-duration').value = mt.durationMinutes || 120;
+  document.getElementById('mt-duration').value = mt.durationMinutes || mt.duration_minutes || 120;
+  document.getElementById('mt-buffer').value = mt.bufferMinutes != null ? mt.bufferMinutes : (mt.buffer_minutes != null ? mt.buffer_minutes : 0);
   setMtActive(mt.isActive !== false);
   // Plan chips
   var plans = mt.plans || [];
@@ -2594,6 +2601,7 @@ mtypeSubmitBtn.addEventListener('click', async function() {
   var name = document.getElementById('mt-name').value.trim();
   var label = document.getElementById('mt-label').value.trim();
   var duration = parseInt(document.getElementById('mt-duration').value) || 120;
+  var buffer = parseInt(document.getElementById('mt-buffer').value) || 0;
   var isActive = document.getElementById('mt-active-toggle').classList.contains('on');
 
   if (!name || !label) {
@@ -2614,7 +2622,7 @@ mtypeSubmitBtn.addEventListener('click', async function() {
     if (editingMtypeId) {
       await apiFetch('/api/admin/meeting-types/' + editingMtypeId, {
         method: 'PUT',
-        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, is_active: isActive })
+        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, buffer_minutes: buffer, is_active: isActive })
       });
       await apiFetch('/api/admin/meeting-types/' + editingMtypeId + '/plans', {
         method: 'PUT',
@@ -2628,7 +2636,7 @@ mtypeSubmitBtn.addEventListener('click', async function() {
     } else {
       var created = await apiFetch('/api/admin/meeting-types', {
         method: 'POST',
-        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, is_active: isActive })
+        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, buffer_minutes: buffer, is_active: isActive })
       });
       var newId = created.id;
       await apiFetch('/api/admin/meeting-types/' + newId + '/plans', {
