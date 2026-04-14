@@ -68,12 +68,13 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
 
   const dayOfWeek = userDate.weekday === 7 ? 0 : userDate.weekday;
 
-  // Fetch meeting type config (buffer + min advance)
+  // Fetch meeting type config (buffer + min advance + max daily)
   let bufferMinutes = 0;
   let minAdvanceMinutes = 60;
+  let maxDailyMeetings = 0;
   if (meetingTypeId) {
     const { rows } = await pool.query(
-      `SELECT is_available, buffer_minutes, min_advance_minutes FROM meeting_type_schedules mts
+      `SELECT is_available, buffer_minutes, min_advance_minutes, max_daily_meetings FROM meeting_type_schedules mts
        RIGHT JOIN meeting_types mt ON mt.id = mts.meeting_type_id AND mts.day_of_week = $2
        WHERE mt.id = $1`,
       [meetingTypeId, dayOfWeek]
@@ -82,6 +83,7 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
       if (rows[0].is_available === false) return [];
       bufferMinutes = rows[0].buffer_minutes || 0;
       minAdvanceMinutes = rows[0].min_advance_minutes != null ? rows[0].min_advance_minutes : 60;
+      maxDailyMeetings = rows[0].max_daily_meetings || 0;
     }
   }
 
@@ -257,9 +259,8 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
     if (busyResult.errors[staff.id]) {
       inaccessibleStaff.add(staff.id);
     }
-    // Check max daily meetings limit
-    const maxDaily = staff.max_daily_meetings || 0;
-    if (maxDaily > 0 && (staffDailyCount[staff.id] || 0) >= maxDaily) {
+    // Check max daily meetings limit (from meeting type settings)
+    if (maxDailyMeetings > 0 && (staffDailyCount[staff.id] || 0) >= maxDailyMeetings) {
       inaccessibleStaff.add(staff.id);
     }
   }

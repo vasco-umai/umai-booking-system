@@ -167,7 +167,7 @@ async function deleteStaff(id) {
  * @returns {object|null} The selected staff member, or null if none available
  *                        (caller should fall back to legacy single-calendar).
  */
-async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
+async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0, maxDailyMeetings = 0) {
   logger.info({ slotStart, slotEnd, bufferMinutes }, '[ASSIGN] Staff assignment started');
 
   // 1. Get all eligible staff
@@ -317,9 +317,8 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
   for (const r of dailyCounts) dailyCountMap[r.staff_member_id] = parseInt(r.cnt, 10);
 
   const underLimitStaff = trulyFreeStaff.filter(s => {
-    const maxDaily = s.max_daily_meetings || 0;
-    if (maxDaily <= 0) return true; // 0 = unlimited
-    return (dailyCountMap[s.id] || 0) < maxDaily;
+    if (maxDailyMeetings <= 0) return true; // 0 = unlimited
+    return (dailyCountMap[s.id] || 0) < maxDailyMeetings;
   });
 
   logger.info({ staff: underLimitStaff.map(s => s.name) }, '[ASSIGN] Under daily limit');

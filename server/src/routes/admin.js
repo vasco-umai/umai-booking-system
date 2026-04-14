@@ -582,14 +582,14 @@ router.get('/meeting-types', async (req, res, next) => {
 // POST /api/admin/meeting-types
 router.post('/meeting-types', async (req, res, next) => {
   try {
-    const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes } = req.body;
+    const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings } = req.body;
     if (!name || !label || !duration_minutes) {
       return res.status(400).json({ error: 'name, label, and duration_minutes are required' });
     }
     const { rows } = await pool.query(
-      `INSERT INTO meeting_types (name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [name, label, duration_minutes, is_active !== false, buffer_minutes || 0, min_advance_minutes != null ? min_advance_minutes : 60]
+      `INSERT INTO meeting_types (name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [name, label, duration_minutes, is_active !== false, buffer_minutes || 0, min_advance_minutes != null ? min_advance_minutes : 60, max_daily_meetings || 0]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -604,7 +604,7 @@ router.post('/meeting-types', async (req, res, next) => {
 router.put('/meeting-types/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes } = req.body;
+    const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings } = req.body;
     const { rows } = await pool.query(
       `UPDATE meeting_types SET
         name = COALESCE($1, name),
@@ -613,9 +613,10 @@ router.put('/meeting-types/:id', async (req, res, next) => {
         is_active = COALESCE($4, is_active),
         buffer_minutes = COALESCE($5, buffer_minutes),
         min_advance_minutes = COALESCE($6, min_advance_minutes),
+        max_daily_meetings = COALESCE($7, max_daily_meetings),
         updated_at = NOW()
-       WHERE id = $7 RETURNING *`,
-      [name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, id]
+       WHERE id = $8 RETURNING *`,
+      [name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings, id]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Meeting type not found' });
     res.json(rows[0]);

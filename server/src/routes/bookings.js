@@ -60,11 +60,13 @@ router.post('/', async (req, res, next) => {
     // Look up meeting type label and buffer before staff assignment and conflict check
     let meetingTypeLabel = null;
     let bufferMinutes = 0;
+    let maxDailyMeetings = 0;
     if (meeting_type_id) {
-      const { rows: mtRows } = await client.query('SELECT label, buffer_minutes FROM meeting_types WHERE id = $1', [meeting_type_id]);
+      const { rows: mtRows } = await client.query('SELECT label, buffer_minutes, max_daily_meetings FROM meeting_types WHERE id = $1', [meeting_type_id]);
       if (mtRows.length > 0) {
         meetingTypeLabel = mtRows[0].label;
         bufferMinutes = mtRows[0].buffer_minutes || 0;
+        maxDailyMeetings = mtRows[0].max_daily_meetings || 0;
       }
     }
 
@@ -78,7 +80,7 @@ router.post('/', async (req, res, next) => {
         return res.status(400).json({ error: 'Requested staff member is not available', code: 'INVALID_STAFF' });
       }
     } else {
-      assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end, bufferMinutes);
+      assignedStaff = await staffService.selectStaffForSlot(slot_start, slot_end, bufferMinutes, maxDailyMeetings);
     }
 
     // Check for conflicting confirmed bookings (including buffer zone)
