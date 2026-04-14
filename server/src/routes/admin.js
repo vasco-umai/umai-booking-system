@@ -167,7 +167,7 @@ router.get('/staff', requireRole('admin'), async (req, res, next) => {
 // POST /api/admin/staff
 router.post('/staff', requireRole('admin'), async (req, res, next) => {
   try {
-    const { name, email, meeting_pct, google_calendar_id, is_active } = req.body;
+    const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings } = req.body;
     if (!name || !email) {
       return res.status(400).json({ error: 'name and email are required' });
     }
@@ -177,6 +177,7 @@ router.post('/staff', requireRole('admin'), async (req, res, next) => {
       meetingPct: meeting_pct != null ? meeting_pct : 100,
       googleCalendarId: google_calendar_id || null,
       isActive: is_active !== false,
+      maxDailyMeetings: max_daily_meetings || 0,
     });
     res.status(201).json(staff);
   } catch (err) {
@@ -199,13 +200,14 @@ router.post('/staff/:id/invite', requireRole('admin'), async (req, res, next) =>
 // PUT /api/admin/staff/:id
 router.put('/staff/:id', requireRole('admin'), async (req, res, next) => {
   try {
-    const { name, email, meeting_pct, google_calendar_id, is_active } = req.body;
+    const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings } = req.body;
     const staff = await staffService.updateStaff(req.params.id, {
       name,
       email,
       meetingPct: meeting_pct,
       googleCalendarId: google_calendar_id,
       isActive: is_active,
+      maxDailyMeetings: max_daily_meetings,
     });
     if (!staff) return res.status(404).json({ error: 'Staff member not found' });
     res.json(staff);

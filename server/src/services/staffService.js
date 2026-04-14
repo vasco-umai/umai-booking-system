@@ -62,12 +62,12 @@ async function getStaffById(id) {
  * @param {boolean} [data.isActive=true]
  * @returns {object} The created staff row.
  */
-async function createStaff({ name, email, meetingPct = 100, googleCalendarId = null, isActive = true }) {
+async function createStaff({ name, email, meetingPct = 100, googleCalendarId = null, isActive = true, maxDailyMeetings = 0 }) {
   const { rows } = await pool.query(
-    `INSERT INTO staff_members (name, email, meeting_pct, google_calendar_id, is_active)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO staff_members (name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [name, email, meetingPct, googleCalendarId, isActive]
+    [name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings || 0]
   );
 
   // Also create an admin_users login so the team member can log in
@@ -114,7 +114,7 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
  * @param {boolean} [data.isActive]
  * @returns {object|null} The updated row, or null if not found.
  */
-async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isActive }) {
+async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings }) {
   const { rows } = await pool.query(
     `UPDATE staff_members
      SET name               = COALESCE($2, name),
@@ -122,10 +122,11 @@ async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isAc
          meeting_pct        = COALESCE($4, meeting_pct),
          google_calendar_id = COALESCE($5, google_calendar_id),
          is_active          = COALESCE($6, is_active),
+         max_daily_meetings = COALESCE($7, max_daily_meetings),
          updated_at         = NOW()
      WHERE id = $1
      RETURNING *`,
-    [id, name, email, meetingPct, googleCalendarId, isActive]
+    [id, name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings != null ? maxDailyMeetings : undefined]
   );
   return rows[0] || null;
 }
@@ -303,14 +304,39 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
     return null;
   }
 
+  // 4c. Check max daily meetings limit
+  const slotDate = slotStartDt.toISODate();
+  const { rows: dailyCounts } = await pool.query(
+    `SELECT staff_member_id, COUNT(*) as cnt FROM bookings
+     WHERE staff_member_id = ANY($1) AND status = 'confirmed'
+       AND slot_start::date = $2::date
+     GROUP BY staff_member_id`,
+    [trulyFreeStaff.map(s => s.id), slotDate]
+  );
+  const dailyCountMap = {};
+  for (const r of dailyCounts) dailyCountMap[r.staff_member_id] = parseInt(r.cnt, 10);
+
+  const underLimitStaff = trulyFreeStaff.filter(s => {
+    const maxDaily = s.max_daily_meetings || 0;
+    if (maxDaily <= 0) return true; // 0 = unlimited
+    return (dailyCountMap[s.id] || 0) < maxDaily;
+  });
+
+  logger.info({ staff: underLimitStaff.map(s => s.name) }, '[ASSIGN] Under daily limit');
+
+  if (underLimitStaff.length === 0) {
+    logger.info('[ASSIGN] All staff at daily meeting limit');
+    return null;
+  }
+
   // Short-circuit: if only one person is free, assign directly
-  if (trulyFreeStaff.length === 1) {
-    logger.info({ selected: trulyFreeStaff[0].name }, '[ASSIGN] Only one free - auto-selected');
-    return trulyFreeStaff[0];
+  if (underLimitStaff.length === 1) {
+    logger.info({ selected: underLimitStaff[0].name }, '[ASSIGN] Only one free - auto-selected');
+    return underLimitStaff[0];
   }
 
   // 5. Get confirmed booking counts for the free staff over the last 30 days
-  const freeIds = trulyFreeStaff.map((s) => s.id);
+  const freeIds = underLimitStaff.map((s) => s.id);
 
   const { rows: countRows } = await pool.query(
     `SELECT staff_member_id, COUNT(*) as cnt FROM bookings
@@ -331,22 +357,20 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
   }
 
   // Ensure every free staff member has an entry (default 0)
-  for (const s of trulyFreeStaff) {
+  for (const s of underLimitStaff) {
     if (!(s.id in bookingCounts)) {
       bookingCounts[s.id] = 0;
     }
   }
 
   // 6. Compute adjusted weights
-  const totalPct = trulyFreeStaff.reduce((sum, s) => sum + s.meeting_pct, 0);
+  const totalPct = underLimitStaff.reduce((sum, s) => sum + s.meeting_pct, 0);
   let weights;
 
-  if (totalBookings < trulyFreeStaff.length) {
-    // Not enough historical data to self-balance — use raw meeting_pct
-    weights = trulyFreeStaff.map((s) => s.meeting_pct);
+  if (totalBookings < underLimitStaff.length) {
+    weights = underLimitStaff.map((s) => s.meeting_pct);
   } else {
-    // Self-balancing: nudge weights so actual ratios converge to expected ratios
-    weights = trulyFreeStaff.map((s) => {
+    weights = underLimitStaff.map((s) => {
       const expectedRatio = s.meeting_pct / totalPct;
       const actualRatio = bookingCounts[s.id] / totalBookings;
 
@@ -361,22 +385,21 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0) {
 
   // 7. Weighted random selection
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  logger.info({ weights: trulyFreeStaff.map((s, i) => `${s.name}=${weights[i].toFixed(2)}`), totalWeight: totalWeight.toFixed(2) }, '[ASSIGN] Weights');
-  logger.info({ bookings: trulyFreeStaff.map(s => `${s.name}=${bookingCounts[s.id]}`), totalBookings }, '[ASSIGN] Bookings (30d)');
+  logger.info({ weights: underLimitStaff.map((s, i) => `${s.name}=${weights[i].toFixed(2)}`), totalWeight: totalWeight.toFixed(2) }, '[ASSIGN] Weights');
+  logger.info({ bookings: underLimitStaff.map(s => `${s.name}=${bookingCounts[s.id]}`), totalBookings }, '[ASSIGN] Bookings (30d)');
 
   let rand = Math.random() * totalWeight;
 
-  for (let i = 0; i < trulyFreeStaff.length; i++) {
+  for (let i = 0; i < underLimitStaff.length; i++) {
     rand -= weights[i];
     if (rand <= 0) {
-      logger.info({ selected: trulyFreeStaff[i].name, id: trulyFreeStaff[i].id }, '[ASSIGN] Selected');
-      return trulyFreeStaff[i];
+      logger.info({ selected: underLimitStaff[i].name, id: underLimitStaff[i].id }, '[ASSIGN] Selected');
+      return underLimitStaff[i];
     }
   }
 
-  // Fallback (should not be reached due to floating-point, but just in case)
-  logger.info({ selected: trulyFreeStaff[trulyFreeStaff.length - 1].name }, '[ASSIGN] Fallback selected');
-  return trulyFreeStaff[trulyFreeStaff.length - 1];
+  logger.info({ selected: underLimitStaff[underLimitStaff.length - 1].name }, '[ASSIGN] Fallback selected');
+  return underLimitStaff[underLimitStaff.length - 1];
 }
 
 /**

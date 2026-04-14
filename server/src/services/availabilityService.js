@@ -243,10 +243,23 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
     }
   }
 
+  // Count confirmed bookings per staff for the day (for max daily meetings limit)
+  const staffDailyCount = {};
+  for (const b of bookings) {
+    if (b.staff_member_id) {
+      staffDailyCount[b.staff_member_id] = (staffDailyCount[b.staff_member_id] || 0) + 1;
+    }
+  }
+
   // Track which staff have inaccessible calendars (treat as fully busy)
   const inaccessibleStaff = new Set();
   for (const staff of activeStaff) {
     if (busyResult.errors[staff.id]) {
+      inaccessibleStaff.add(staff.id);
+    }
+    // Check max daily meetings limit
+    const maxDaily = staff.max_daily_meetings || 0;
+    if (maxDaily > 0 && (staffDailyCount[staff.id] || 0) >= maxDaily) {
       inaccessibleStaff.add(staff.id);
     }
   }

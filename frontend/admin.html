@@ -874,6 +874,10 @@ tbody tr:hover{background:var(--card)}
               <label>Meeting %</label>
               <input class="if-input" type="number" id="stf-pct" value="100" min="0" max="100">
             </div>
+            <div class="if-group">
+              <label>Max meetings/day</label>
+              <input class="if-input" type="number" id="stf-max-daily" value="0" min="0" max="20" placeholder="0 = unlimited">
+            </div>
             <div class="if-group" id="stf-gcal-group" style="display:none">
               <label>Google Calendar</label>
               <div id="stf-gcal-info" style="font-size:13px;color:var(--text-mid);margin-bottom:6px">Save the staff member first, then connect.</div>
@@ -2128,6 +2132,7 @@ addStaffBtn.addEventListener('click', () => {
   $('#stf-name').value = '';
   $('#stf-email').value = '';
   $('#stf-pct').value = '100';
+  $('#stf-max-daily').value = '0';
   $('#stf-gcal').value = '';
   setDrop('stf-active', 'true');
   $('#stf-gcal-group').style.display = 'none';
@@ -2148,6 +2153,7 @@ window.editStaff = function(id) {
   $('#stf-name').value = s.name || '';
   $('#stf-email').value = s.email || '';
   $('#stf-pct').value = s.meetingPct != null ? s.meetingPct : (s.meeting_pct != null ? s.meeting_pct : 100);
+  $('#stf-max-daily').value = s.maxDailyMeetings != null ? s.maxDailyMeetings : (s.max_daily_meetings != null ? s.max_daily_meetings : 0);
   $('#stf-gcal').value = s.googleCalendarId || s.google_calendar_id || '';
   setDrop('stf-active', String(s.isActive ?? s.is_active ?? true));
 
@@ -2266,6 +2272,7 @@ staffSubmitBtn.addEventListener('click', async () => {
     name,
     email,
     meeting_pct: parseInt($('#stf-pct').value, 10) || 0,
+    max_daily_meetings: parseInt($('#stf-max-daily').value, 10) || 0,
     is_active: getDrop('stf-active') === 'true'
   };
 
