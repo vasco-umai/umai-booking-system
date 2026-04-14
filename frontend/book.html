@@ -509,10 +509,15 @@ body{
 
     showView('viewDatetime');
 
-    // Find the next available date instead of defaulting to today
+    // Show loading while finding the next available date
+    var g = $('timeG');
+    g.innerHTML = '<div class="ts-loading">Finding available dates...</div>';
+    $('calTxt').textContent = 'Loading...';
+
+    var duration = S.meetingType ? S.meetingType.duration_minutes : 120;
     var todayStr = S.date.getFullYear() + '-' + String(S.date.getMonth() + 1).padStart(2, '0') + '-' + String(S.date.getDate()).padStart(2, '0');
     try {
-      var url = API_BASE + '/api/availability/next-available?from=' + todayStr + '&tz=' + encodeURIComponent(USER_TZ);
+      var url = API_BASE + '/api/availability/next-available?from=' + todayStr + '&tz=' + encodeURIComponent(USER_TZ) + '&duration=' + duration;
       if (S.meetingType && S.meetingType.id) url += '&meeting_type_id=' + S.meetingType.id;
       if (S.staffId) url += '&staff_id=' + encodeURIComponent(S.staffId);
       var res = await fetch(url);
