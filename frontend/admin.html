@@ -2486,12 +2486,12 @@ window.showAllBookingLinks = function() {
   var body = document.getElementById('linksBody');
   document.getElementById('linksTitle').textContent = 'Booking Links';
 
-  // Collect unique plans and their meeting types
+  // Collect unique plans and their meeting types (with names for URL)
   var planMap = {};
   (meetingTypes || []).forEach(function(mt) {
     (mt.plans || []).forEach(function(plan) {
       if (!planMap[plan]) planMap[plan] = [];
-      planMap[plan].push(mt.label);
+      planMap[plan].push({ label: mt.label, name: mt.name });
     });
   });
 
@@ -2502,23 +2502,55 @@ window.showAllBookingLinks = function() {
     return;
   }
 
-  body.innerHTML = plans.map(function(plan, idx) {
-    var url = window.location.origin + '/book.html?plan=' + encodeURIComponent(plan.toLowerCase());
-    var types = planMap[plan].join(', ');
-    window['_linkUrl' + idx] = url;
-    return '<div class="link-row">' +
-      '<div style="min-width:0;flex:1">' +
-        '<div class="link-row-label">' + escHtml(plan) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-light);margin:2px 0">' + escHtml(types) + '</div>' +
-        '<div class="link-row-url">' + escHtml(url) + '</div>' +
-      '</div>' +
-      '<div class="link-row-actions">' +
-        '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + idx + ')">Copy</button>' +
-        '<a href="' + url + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  var linkIdx = 0;
+  var html = '';
 
+  plans.forEach(function(plan) {
+    var types = planMap[plan];
+    var base = window.location.origin + '/book.html?plan=' + encodeURIComponent(plan.toLowerCase());
+
+    html += '<div style="margin-bottom:16px">';
+    html += '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">' + escHtml(plan) + ' Plan</div>';
+
+    // If multiple types, show "Choice" link first
+    if (types.length > 1) {
+      var choiceUrl = base;
+      var choiceLabel = 'Choice (' + types.map(function(t) { return t.label; }).join(' / ') + ')';
+      window['_linkUrl' + linkIdx] = choiceUrl;
+      html += '<div class="link-row">' +
+        '<div style="min-width:0;flex:1">' +
+          '<div class="link-row-label">' + escHtml(choiceLabel) + '</div>' +
+          '<div class="link-row-url">' + escHtml(choiceUrl) + '</div>' +
+        '</div>' +
+        '<div class="link-row-actions">' +
+          '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + linkIdx + ')">Copy</button>' +
+          '<a href="' + choiceUrl + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
+        '</div>' +
+      '</div>';
+      linkIdx++;
+    }
+
+    // Individual type links
+    types.forEach(function(t) {
+      var typeUrl = base + '&type=' + encodeURIComponent(t.name);
+      window['_linkUrl' + linkIdx] = typeUrl;
+      html += '<div class="link-row">' +
+        '<div style="min-width:0;flex:1">' +
+          '<div class="link-row-label">' + escHtml(t.label) + ' only</div>' +
+          '<div class="link-row-url">' + escHtml(typeUrl) + '</div>' +
+        '</div>' +
+        '<div class="link-row-actions">' +
+          '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + linkIdx + ')">Copy</button>' +
+          '<a href="' + typeUrl + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
+        '</div>' +
+      '</div>';
+      linkIdx++;
+    });
+
+    html += '</div>';
+  });
+
+  body.innerHTML = html;
   document.getElementById('linksOverlay').classList.add('open');
 };
 
