@@ -92,4 +92,9 @@ async function start() {
   }
 }
 
-start();
+// Vercel serverless: export the Express app; locally: start listening
+if (process.env.VERCEL) {
+  module.exports = app;
+} else {
+  start();
+}

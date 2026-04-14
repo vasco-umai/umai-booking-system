@@ -140,47 +140,49 @@ router.post('/', async (req, res, next) => {
       calendarDescription += `\n\nAdd-ons:\n` + addons.map(a => `- ${stripHtml(a)}`).join('\n');
     }
 
-    // Async: Create Google Calendar event, then send confirmation email with meeting link
-    const emailParams = {
-      guestName: guest_name,
-      guestEmail: guest_email,
-      slotStart: slot_start,
-      slotEnd: slot_end,
-      guestTz: guest_tz || 'UTC',
-      venueName: venue_name,
-      replyTo: assignedStaff?.email || undefined,
-      meetingLink: null,
-    };
+    // Create Google Calendar event (awaited so Vercel doesn't kill the function)
+    let meetingLink = null;
+    try {
+      const { eventId, hangoutLink, failed } = await calendarService.createEvent({
+        summary: `UMAI x ${venue_name || guest_name} - Setup and Settings Adjustments`,
+        description: calendarDescription,
+        startTime: slot_start,
+        endTime: slot_end,
+        attendeeEmail: guest_email,
+        timeZone: guest_tz || 'UTC',
+        staffRefreshToken: assignedStaff?.google_refresh_token,
+        addConference: isOnline,
+      });
 
-    calendarService.createEvent({
-      summary: `UMAI x ${venue_name || guest_name} - Setup and Settings Adjustments`,
-      description: calendarDescription,
-      startTime: slot_start,
-      endTime: slot_end,
-      attendeeEmail: guest_email,
-      timeZone: guest_tz || 'UTC',
-      staffRefreshToken: assignedStaff?.google_refresh_token,
-      addConference: isOnline,
-    }).then(({ eventId, hangoutLink, failed }) => {
       if (eventId) {
-        pool.query('UPDATE bookings SET gcal_event_id = $1, gcal_sync_failed = false, meeting_link = $2 WHERE id = $3', [eventId, hangoutLink, booking.id]);
+        meetingLink = hangoutLink || null;
+        await pool.query('UPDATE bookings SET gcal_event_id = $1, gcal_sync_failed = false, meeting_link = $2 WHERE id = $3', [eventId, meetingLink, booking.id]);
       } else if (failed) {
-        pool.query('UPDATE bookings SET gcal_sync_failed = true WHERE id = $1', [booking.id]);
+        await pool.query('UPDATE bookings SET gcal_sync_failed = true WHERE id = $1', [booking.id]);
         logger.error({ bookingId: booking.id, staffName: assignedStaff?.name }, 'GCal sync failed for booking');
       }
-      emailParams.meetingLink = hangoutLink || null;
-      return emailService.sendConfirmation(emailParams);
-    }).then(sent => {
-      pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, booking.id]);
-    }).catch(err => {
-      logger.error({ err, bookingId: booking.id }, 'GCal or email failed, sending email without meeting link');
-      emailService.sendConfirmation(emailParams).then(sent => {
-        pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, booking.id]);
-      }).catch(emailErr => {
-        pool.query('UPDATE bookings SET confirmation_email_sent = false WHERE id = $1', [booking.id]);
-        logger.error({ err: emailErr, bookingId: booking.id }, 'Confirmation email failed');
+    } catch (err) {
+      await pool.query('UPDATE bookings SET gcal_sync_failed = true WHERE id = $1', [booking.id]);
+      logger.error({ err, bookingId: booking.id }, 'GCal event creation failed');
+    }
+
+    // Send confirmation email (awaited so it completes before Vercel terminates)
+    try {
+      const sent = await emailService.sendConfirmation({
+        guestName: guest_name,
+        guestEmail: guest_email,
+        slotStart: slot_start,
+        slotEnd: slot_end,
+        guestTz: guest_tz || 'UTC',
+        venueName: venue_name,
+        replyTo: assignedStaff?.email || undefined,
+        meetingLink,
       });
-    });
+      await pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, booking.id]);
+    } catch (err) {
+      await pool.query('UPDATE bookings SET confirmation_email_sent = false WHERE id = $1', [booking.id]);
+      logger.error({ err, bookingId: booking.id }, 'Confirmation email failed');
+    }
 
     res.status(201).json({
       message: 'Booking confirmed',
@@ -189,6 +191,8 @@ router.post('/', async (req, res, next) => {
         slot_start: booking.slot_start,
         slot_end: booking.slot_end,
         status: booking.status,
+        staff_name: assignedStaff?.name?.trim() || null,
+        meeting_link: meetingLink,
       },
     });
   } catch (err) {

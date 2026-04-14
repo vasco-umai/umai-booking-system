@@ -70,8 +70,20 @@ async function createEvent({ summary, description, startTime, endTime, attendeeE
       }),
       'createEvent'
     );
-    const hangoutLink = res.data.hangoutLink || null;
-    logger.info({ eventId: res.data.id, hangoutLink, summary }, 'Google Calendar event created');
+    // hangoutLink is the primary field, but conferenceData.entryPoints may have it too
+    let hangoutLink = res.data.hangoutLink || null;
+    if (!hangoutLink && res.data.conferenceData && res.data.conferenceData.entryPoints) {
+      const videoEntry = res.data.conferenceData.entryPoints.find(ep => ep.entryPointType === 'video');
+      if (videoEntry) hangoutLink = videoEntry.uri;
+    }
+    logger.info({
+      eventId: res.data.id,
+      hangoutLink,
+      hasConferenceData: !!res.data.conferenceData,
+      conferenceStatus: res.data.conferenceData?.createRequest?.status?.statusCode,
+      addConference,
+      summary,
+    }, 'Google Calendar event created');
     return { eventId: res.data.id, hangoutLink, failed: false };
   } catch (err) {
     logger.error({ err, summary }, 'Failed to create Google Calendar event after retries');

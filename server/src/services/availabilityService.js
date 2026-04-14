@@ -32,7 +32,7 @@ function buildSlotsFromSchedule(sched, dateStr, durationOverride) {
       start: cursor.toUTC(),
       end: cursor.plus({ minutes: duration }).toUTC(),
     });
-    cursor = cursor.plus({ minutes: duration });
+    cursor = cursor.plus({ minutes: 15 });
   }
   return slots;
 }

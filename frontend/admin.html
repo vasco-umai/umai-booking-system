@@ -188,6 +188,22 @@ body{
   border:1.5px solid rgba(245,158,11,0.3);
 }
 .btn-sm-cancel:hover{background:rgba(245,158,11,0.06);border-color:var(--warning)}
+.btn-sm-teal{
+  background:var(--teal);color:#fff;
+  border:1.5px solid var(--teal);
+}
+.btn-sm-teal:hover{background:var(--teal-dark)}
+.link-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-radius:8px;margin-bottom:8px;
+  background:var(--bg);border:1px solid var(--border);
+}
+.link-row-label{font-size:14px;font-weight:600;color:var(--text)}
+.link-row-url{
+  font-size:11px;color:var(--text-light);word-break:break-all;
+  margin-top:2px;max-width:280px;
+}
+.link-row-actions{display:flex;gap:6px;flex-shrink:0;margin-left:12px}
 
 table{width:100%;border-collapse:collapse}
 thead th{
@@ -1011,6 +1027,17 @@ tbody tr:hover{background:var(--card)}
       </div>
     </div>
 
+  </div>
+</div>
+
+<!-- ===== LINKS POPUP ===== -->
+<div class="overlay" id="linksOverlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="dialog" style="text-align:left;max-width:480px">
+    <h3 id="linksTitle" style="margin-bottom:16px">Booking Links</h3>
+    <div id="linksBody"></div>
+    <div style="text-align:right;margin-top:20px">
+      <button class="btn-sm btn-sm-outline" onclick="document.getElementById('linksOverlay').classList.remove('open')">Close</button>
+    </div>
   </div>
 </div>
 
@@ -2443,13 +2470,50 @@ function renderMeetingTypes() {
         <td><div class="mt-plan-tags">${planTags}</div></td>
         <td><div class="mt-days-pills">${dayPills}</div></td>
         <td>${statusBadge}</td>
-        <td style="text-align:right">
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn-sm btn-sm-teal" onclick='showBookingLinks(${JSON.stringify(mt.name)}, ${JSON.stringify(mt.label)}, ${JSON.stringify(mt.plans || [])})'>Links</button>
           <button class="btn-sm btn-sm-outline" onclick="editMtype(${mt.id})">Edit</button>
           <button class="btn-sm btn-sm-cancel" onclick="deleteMtype(${mt.id})">Delete</button>
         </td>
       </tr>`;
   }).join('');
 }
+
+window.showBookingLinks = function(typeName, typeLabel, plans) {
+  var body = document.getElementById('linksBody');
+  document.getElementById('linksTitle').textContent = typeLabel + ' - Booking Links';
+
+  if (!plans || plans.length === 0) {
+    body.innerHTML = '<p style="color:var(--text-light);font-size:13px">No plans assigned to this meeting type.</p>';
+    document.getElementById('linksOverlay').classList.add('open');
+    return;
+  }
+
+  body.innerHTML = plans.map(function(plan, idx) {
+    var url = window.location.origin + '/book.html?plan=' + encodeURIComponent(plan.toLowerCase()) + '&type=' + encodeURIComponent(typeName);
+    window['_linkUrl' + idx] = url;
+    return '<div class="link-row">' +
+      '<div style="min-width:0;flex:1">' +
+        '<div class="link-row-label">' + escHtml(plan) + '</div>' +
+        '<div class="link-row-url">' + escHtml(url) + '</div>' +
+      '</div>' +
+      '<div class="link-row-actions">' +
+        '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + idx + ')">Copy</button>' +
+        '<a href="' + url + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  document.getElementById('linksOverlay').classList.add('open');
+};
+
+window.copyLinkUrl = function(url) {
+  navigator.clipboard.writeText(url).then(function() {
+    showToast('Link copied!');
+  }).catch(function() {
+    prompt('Copy this link:', url);
+  });
+};
 
 addMtypeBtn.addEventListener('click', function() {
   editingMtypeId = null;

@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>UMAI - Book a Meeting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --teal:#2BBCB3;
+  --teal-dark:#24a39b;
+  --teal-10:rgba(43,188,179,0.08);
+  --bg:#EFF3F6;
+  --white:#fff;
+  --card:#F8F9FA;
+  --text:#2D2D3A;
+  --text-mid:#71717A;
+  --text-light:#A1A1AA;
+  --border:#E0E0E6;
+  --border-lt:#ECECF0;
+  --error:#ef4444;
+  --success:#22c55e;
+  --r:16px;
+  --r-sm:8px;
+  --r-pill:50px;
+  --tr:0.2s ease;
+}
+html{font-size:16px}
+body{
+  font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;
+  padding:32px 16px;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Logo */
+.logo{margin-bottom:32px;display:flex;align-items:center;justify-content:center}
+.logo img{height:32px}
+.logo-text{font-size:22px;font-weight:700;color:var(--text)}
+.logo-text span{color:var(--teal)}
+
+/* Card */
+.card{
+  background:var(--white);
+  border-radius:var(--r);
+  padding:40px 36px;
+  width:100%;max-width:520px;
+  box-shadow:0 4px 24px rgba(0,0,0,0.06);
+}
+
+/* Steps indicator */
+.steps{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:32px}
+.step-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--border);transition:var(--tr);
+}
+.step-dot.active{background:var(--teal);width:24px;border-radius:4px}
+.step-dot.done{background:var(--teal)}
+
+/* Section header */
+.sec-title{font-size:20px;font-weight:700;text-align:center;margin-bottom:4px}
+.sec-desc{font-size:14px;color:var(--text-mid);text-align:center;margin-bottom:28px}
+
+/* Meeting type cards */
+.mtype-grid{display:flex;gap:12px;justify-content:center;margin-bottom:24px}
+.mtype-card{
+  background:var(--white);
+  border:1.5px solid var(--border-lt);
+  border-radius:var(--r);
+  padding:24px 20px;
+  cursor:pointer;transition:var(--tr);
+  display:flex;flex-direction:column;align-items:center;
+  text-align:center;gap:8px;
+  flex:1;min-width:0;
+}
+.mtype-card:hover:not(.mtype-disabled){border-color:var(--teal)}
+.mtype-card.selected{border-color:var(--teal);background:var(--teal-10);box-shadow:0 4px 24px rgba(43,188,179,0.12)}
+.mtype-card svg{color:var(--teal);flex-shrink:0}
+.mtype-label{font-size:16px;font-weight:700}
+.mtype-duration{font-size:13px;color:var(--text-mid)}
+.mtype-disabled{opacity:0.4;cursor:not-allowed}
+.mtype-disabled svg{color:var(--text-light)}
+.mtype-note{font-size:11px;color:var(--text-mid);font-style:italic;margin-top:2px}
+
+/* Calendar */
+.cal-hd{position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:24px}
+.cal-dt{
+  font-size:15px;font-weight:600;padding:10px 20px;
+  border:1.5px solid var(--border-lt);border-radius:var(--r-sm);
+  cursor:pointer;display:flex;align-items:center;gap:8px;
+  transition:var(--tr);user-select:none;background:var(--white);
+}
+.cal-dt:hover{border-color:var(--teal)}
+.cal-dt svg{width:16px;height:16px;color:var(--text-mid)}
+.cal-drop{
+  position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  background:var(--white);border:1.5px solid var(--border-lt);border-radius:var(--r-sm);
+  padding:16px;box-shadow:0 8px 24px rgba(0,0,0,0.1);z-index:50;width:300px;display:none;
+}
+.cal-drop.open{display:block}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-nav button{background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-mid);padding:4px 8px;border-radius:4px;font-family:inherit}
+.cal-nav button:hover{background:var(--bg);color:var(--teal)}
+.cal-mo{font-size:14px;font-weight:600;color:var(--text)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.cal-wk{font-size:10px;font-weight:600;color:var(--text-mid);padding:4px 0}
+.cal-day{font-size:13px;padding:8px 0;border-radius:6px;cursor:pointer;transition:var(--tr);color:var(--text)}
+.cal-day:hover:not(.past):not(.other):not(.no-avail){background:var(--teal-10);color:var(--teal)}
+.cal-day.today{border:1.5px solid var(--teal)}
+.cal-day.sel{background:var(--teal);color:#fff}
+.cal-day.other{color:var(--text-light);opacity:0.4;cursor:default}
+.cal-day.past,.cal-day.no-avail{color:var(--text-light);opacity:0.3;cursor:default;pointer-events:none}
+
+/* Time slots */
+.tz-note{text-align:center;font-size:12px;color:var(--text-mid);margin-bottom:16px}
+.time-g{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:24px}
+.ts{
+  padding:12px 8px;text-align:center;border:1.5px solid var(--border-lt);border-radius:var(--r-sm);
+  cursor:pointer;font-size:13px;font-weight:500;transition:var(--tr);background:var(--white);font-family:inherit;
+}
+.ts:hover{border-color:var(--teal)}
+.ts.on{background:var(--teal);color:#fff;border-color:var(--teal)}
+.ts-loading,.ts-empty,.ts-error{grid-column:1/-1;text-align:center;padding:32px 16px;font-size:13px;color:var(--text-mid)}
+.ts-loading::after{content:'';display:block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--teal);border-radius:50%;margin:12px auto 0;animation:spin .6s linear infinite}
+.ts-error{color:var(--error)}
+.ts-error button{margin-top:8px;background:none;border:1.5px solid var(--border);border-radius:var(--r-sm);padding:6px 16px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--text);transition:var(--tr)}
+.ts-error button:hover{border-color:var(--teal);color:var(--teal)}
+
+/* Form */
+.form-group{margin-bottom:16px;text-align:left}
+.form-group label{display:block;font-size:13px;font-weight:500;color:var(--text-mid);margin-bottom:6px}
+.form-group input{
+  width:100%;padding:12px 16px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-family:inherit;font-size:14px;color:var(--text);
+  outline:none;transition:var(--tr);background:var(--white);
+}
+.form-group input:focus{border-color:var(--teal)}
+.form-group input::placeholder{color:var(--text-light)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* Buttons */
+.btn{
+  display:block;width:100%;padding:14px 32px;
+  background:var(--teal);color:#fff;border:none;border-radius:var(--r-pill);
+  font-family:inherit;font-size:15px;font-weight:600;
+  cursor:pointer;transition:var(--tr);
+}
+.btn:hover{background:var(--teal-dark)}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.btn-back{
+  display:inline-flex;align-items:center;gap:6px;
+  background:none;border:none;color:var(--text-mid);
+  font-family:inherit;font-size:13px;font-weight:500;
+  cursor:pointer;padding:0;margin-bottom:20px;transition:var(--tr);
+}
+.btn-back:hover{color:var(--teal)}
+.btn-back svg{width:16px;height:16px}
+
+/* Done state */
+.done-wrap{text-align:center;padding:20px 0}
+.done-icon{
+  width:72px;height:72px;border-radius:50%;
+  background:var(--teal-10);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 24px;
+}
+.done-icon svg{width:36px;height:36px;color:var(--teal)}
+.done-title{font-size:22px;font-weight:700;margin-bottom:12px}
+.done-detail{font-size:14px;color:var(--text-mid);line-height:1.7;margin-bottom:8px}
+.done-detail strong{color:var(--text);font-weight:600}
+
+/* Error state */
+.error-wrap{text-align:center;padding:40px 0}
+.error-icon{font-size:48px;margin-bottom:16px;color:var(--error)}
+.error-title{font-size:20px;font-weight:700;margin-bottom:8px}
+.error-desc{font-size:14px;color:var(--text-mid);line-height:1.6}
+
+/* Toast */
+.toast{
+  position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-20px);
+  background:var(--teal-10);color:var(--teal);border:1px solid rgba(43,188,179,0.2);
+  padding:10px 24px;border-radius:var(--r-sm);
+  font-size:13px;font-weight:500;z-index:1000;
+  opacity:0;transition:all .3s ease;pointer-events:none;
+  box-shadow:0 4px 16px rgba(0,0,0,.08);
+}
+.toast.error{background:#fef2f2;color:var(--error);border-color:rgba(239,68,68,0.2)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* Spinner */
+.spinner{
+  width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--teal);
+  border-radius:50%;animation:spin 0.8s linear infinite;margin:24px auto;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* View transitions */
+.view{display:none;animation:fadeIn .25s ease}
+.view.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* Hidden utility */
+.hidden{display:none}
+
+/* Responsive */
+@media(max-width:560px){
+  body{padding:20px 12px}
+  .card{padding:28px 20px;border-radius:12px}
+  .sec-title{font-size:18px}
+  .mtype-grid{flex-direction:column}
+  .mtype-card{padding:20px 16px}
+  .time-g{grid-template-columns:repeat(3,1fr);gap:6px}
+  .ts{padding:10px 6px;font-size:12px}
+  .form-row{grid-template-columns:1fr}
+  .cal-drop{width:calc(100vw - 48px);min-width:260px}
+}
+@media(max-width:380px){
+  .time-g{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<div class="logo">
+  <img src="sources/green-logo.png" alt="UMAI" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+  <div class="logo-text" style="display:none">UMAI <span>Meetings</span></div>
+</div>
+
+<div class="card">
+  <!-- Loading -->
+  <div id="viewLoading" class="view active">
+    <div class="sec-title">Loading...</div>
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Error: no plan -->
+  <div id="viewError" class="view">
+    <div class="error-wrap">
+      <div class="error-icon">!</div>
+      <div class="error-title">Invalid Link</div>
+      <div class="error-desc">This booking link is missing required information.<br>Please check the link and try again.</div>
+    </div>
+  </div>
+
+  <!-- Step 1: Meeting Type -->
+  <div id="viewMtype" class="view">
+    <div class="steps"><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div></div>
+    <div class="sec-title">Choose Meeting Type</div>
+    <div class="sec-desc">How would you like to meet?</div>
+    <div id="mtypeGrid" class="mtype-grid"></div>
+    <button id="btnMtype" class="btn" disabled onclick="confirmMtype()">Continue</button>
+  </div>
+
+  <!-- Step 2: Date & Time -->
+  <div id="viewDatetime" class="view">
+    <div class="steps"><div class="step-dot done"></div><div class="step-dot active"></div><div class="step-dot"></div></div>
+    <button class="btn-back" onclick="goBack('datetime')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </button>
+    <div class="sec-title">Pick a Date & Time</div>
+    <div id="mtypeLabel" class="sec-desc"></div>
+    <div class="cal-hd">
+      <div class="cal-dt" onclick="toggleCal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span id="calTxt"></span>
+      </div>
+      <div id="calDrop" class="cal-drop">
+        <div class="cal-nav">
+          <button onclick="navCal(-1)">&lsaquo;</button>
+          <span id="calMo" class="cal-mo"></span>
+          <button onclick="navCal(1)">&rsaquo;</button>
+        </div>
+        <div id="calGrid" class="cal-grid"></div>
+      </div>
+    </div>
+    <div id="tzNote" class="tz-note"></div>
+    <div id="timeG" class="time-g"></div>
+    <button id="btnDatetime" class="btn" disabled onclick="goToInfo()">Continue</button>
+  </div>
+
+  <!-- Step 3: Guest Info -->
+  <div id="viewInfo" class="view">
+    <div class="steps"><div class="step-dot done"></div><div class="step-dot done"></div><div class="step-dot active"></div></div>
+    <button class="btn-back" onclick="goBack('info')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Back
+    </button>
+    <div class="sec-title">Your Details</div>
+    <div id="infoSlotSummary" class="sec-desc"></div>
+    <form id="guestForm" onsubmit="submitBooking(event)">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="gName">Name *</label>
+          <input type="text" id="gName" placeholder="Full name" required>
+        </div>
+        <div class="form-group">
+          <label for="gEmail">Email *</label>
+          <input type="email" id="gEmail" placeholder="you@company.com" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="gPhone">Phone</label>
+          <input type="tel" id="gPhone" placeholder="+351 ...">
+        </div>
+        <div class="form-group">
+          <label for="gCompany">Company</label>
+          <input type="text" id="gCompany" placeholder="Company name">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="gVenue">Venue / Restaurant Name</label>
+        <input type="text" id="gVenue" placeholder="Restaurant name">
+      </div>
+      <div class="form-group" id="addressGroup">
+        <label for="gAddress">Venue Address</label>
+        <input type="text" id="gAddress" placeholder="Street, City">
+      </div>
+      <button type="submit" id="btnBook" class="btn" style="margin-top:8px">Book Meeting</button>
+    </form>
+  </div>
+
+  <!-- Step 4: Confirmation -->
+  <div id="viewDone" class="view">
+    <div class="done-wrap">
+      <div class="done-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="done-title">Meeting Booked!</div>
+      <div id="doneDetails" class="done-detail"></div>
+      <div class="done-detail" style="margin-top:16px;font-size:13px">You'll receive a confirmation email shortly.</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  // -- Config --
+  var API_BASE = window.UMAI_BOOKING_API_BASE || window.location.origin;
+  var USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Lisbon';
+
+  // -- State --
+  var S = {
+    plan: null,
+    preType: null,
+    meetingTypes: [],
+    meetingType: null,
+    date: new Date(),
+    slot: null,
+    prefill: {}
+  };
+  var calView = { m: null, y: null };
+  var monthAvailCache = {};
+
+  // -- Parse query params --
+  var params = new URLSearchParams(window.location.search);
+  S.plan = params.get('plan');
+  S.preType = params.get('type');
+  S.prefill = {
+    name: params.get('name') || '',
+    email: params.get('email') || '',
+    phone: params.get('phone') || '',
+    company: params.get('company') || '',
+    venue: params.get('venue') || ''
+  };
+
+  // -- DOM helpers --
+  function $(id) { return document.getElementById(id); }
+  function showView(id) {
+    document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
+    $(id).classList.add('active');
+  }
+
+  function showToast(msg, isError) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isError ? ' error' : '') + ' show';
+    setTimeout(function() { t.classList.remove('show'); }, 3500);
+  }
+
+  // -- Month/day names --
+  var MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var DN = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  var MN_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DN_F = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  // -- Init --
+  async function init() {
+    if (!S.plan) {
+      showView('viewError');
+      return;
+    }
+
+    try {
+      var res = await fetch(API_BASE + '/api/availability/meeting-types?plan=' + encodeURIComponent(S.plan));
+      var data = await res.json();
+      S.meetingTypes = data.meeting_types || [];
+    } catch (e) {
+      S.meetingTypes = [];
+    }
+
+    // Fallback
+    if (S.meetingTypes.length === 0) {
+      S.meetingTypes = [
+        { id: null, name: 'online', label: 'Online', duration_minutes: 120 },
+        { id: null, name: 'in_person', label: 'In-Person', duration_minutes: 120 }
+      ];
+    }
+
+    // Pre-fill form fields
+    if (S.prefill.name) $('gName').value = S.prefill.name;
+    if (S.prefill.email) $('gEmail').value = S.prefill.email;
+    if (S.prefill.phone) $('gPhone').value = S.prefill.phone;
+    if (S.prefill.company) $('gCompany').value = S.prefill.company;
+    if (S.prefill.venue) $('gVenue').value = S.prefill.venue;
+
+    // Auto-select meeting type for mini plan or if type param provided
+    if (S.plan === 'mini') {
+      S.meetingType = S.meetingTypes[0];
+      goToDatetime();
+      return;
+    }
+
+    if (S.preType) {
+      var match = S.meetingTypes.find(function(mt) {
+        return mt.name === S.preType || mt.name === S.preType.replace('-', '_');
+      });
+      if (match) {
+        S.meetingType = match;
+        goToDatetime();
+        return;
+      }
+    }
+
+    // If only one meeting type, auto-select
+    if (S.meetingTypes.length === 1) {
+      S.meetingType = S.meetingTypes[0];
+      goToDatetime();
+      return;
+    }
+
+    renderMtypeCards();
+    showView('viewMtype');
+  }
+
+  // -- Meeting Type Cards --
+  function renderMtypeCards() {
+    var grid = $('mtypeGrid');
+    grid.innerHTML = '';
+    S.meetingType = null;
+    $('btnMtype').disabled = true;
+
+    S.meetingTypes.forEach(function(mt) {
+      var isInPerson = mt.name === 'in_person' || mt.name === 'in-person';
+
+      var card = document.createElement('div');
+      card.className = 'mtype-card';
+
+      var icon = isInPerson
+        ? '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+        : '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+
+      card.innerHTML = icon
+        + '<div class="mtype-label">' + mt.label + '</div>'
+        + '<div class="mtype-duration">' + mt.duration_minutes + ' min</div>';
+
+      card.onclick = function() {
+        document.querySelectorAll('.mtype-card').forEach(function(c) { c.classList.remove('selected'); });
+        card.classList.add('selected');
+        S.meetingType = mt;
+        $('btnMtype').disabled = false;
+      };
+
+      grid.appendChild(card);
+    });
+  }
+
+  window.confirmMtype = function() {
+    if (!S.meetingType) return;
+    goToDatetime();
+  };
+
+  // -- Date & Time --
+  async function goToDatetime() {
+    S.date = new Date();
+    S.slot = null;
+    monthAvailCache = {};
+    $('btnDatetime').disabled = true;
+
+    var label = S.meetingType
+      ? S.meetingType.label + ' - ' + S.meetingType.duration_minutes + ' min'
+      : '';
+    $('mtypeLabel').textContent = label;
+
+    showView('viewDatetime');
+
+    // Find the next available date instead of defaulting to today
+    var todayStr = S.date.getFullYear() + '-' + String(S.date.getMonth() + 1).padStart(2, '0') + '-' + String(S.date.getDate()).padStart(2, '0');
+    try {
+      var url = API_BASE + '/api/availability/next-available?from=' + todayStr + '&tz=' + encodeURIComponent(USER_TZ);
+      if (S.meetingType && S.meetingType.id) url += '&meeting_type_id=' + S.meetingType.id;
+      var res = await fetch(url);
+      if (res.ok) {
+        var data = await res.json();
+        if (data.date) {
+          var parts = data.date.split('-');
+          S.date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+      }
+    } catch (e) { /* fall back to today */ }
+
+    loadSlots();
+  }
+
+  function updateCalText() {
+    var d = S.date;
+    $('calTxt').textContent = DN_F[d.getDay()] + ' ' + d.getDate() + ', ' + MN_S[d.getMonth()] + ', ' + d.getFullYear();
+  }
+
+  async function loadSlots() {
+    updateCalText();
+    var g = $('timeG');
+    g.innerHTML = '<div class="ts-loading">Loading available times...</div>';
+    $('btnDatetime').disabled = true;
+    S.slot = null;
+
+    $('tzNote').textContent = 'Times shown in ' + USER_TZ.replace(/_/g, ' ');
+
+    var d = S.date;
+    var dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    var duration = S.meetingType ? S.meetingType.duration_minutes : 120;
+
+    try {
+      var url = API_BASE + '/api/availability?date=' + dateStr + '&tz=' + encodeURIComponent(USER_TZ) + '&duration=' + duration;
+      if (S.meetingType && S.meetingType.id) url += '&meeting_type_id=' + S.meetingType.id;
+
+      var res = await fetch(url);
+      if (!res.ok) throw new Error('Failed');
+      var data = await res.json();
+
+      g.innerHTML = '';
+      if (!data.slots || data.slots.length === 0) {
+        g.innerHTML = '<div class="ts-empty">No available times on this date</div>';
+        return;
+      }
+
+      data.slots.forEach(function(slot) {
+        var b = document.createElement('button');
+        b.className = 'ts';
+        b.textContent = slot.display;
+        b.onclick = function() {
+          document.querySelectorAll('.ts').forEach(function(x) { x.classList.remove('on'); });
+          b.classList.add('on');
+          S.slot = slot;
+          $('btnDatetime').disabled = false;
+        };
+        g.appendChild(b);
+      });
+    } catch (err) {
+      g.innerHTML = '<div class="ts-error">Could not load available times<br><button onclick="window._retrySlots()">Try again</button></div>';
+    }
+  }
+  window._retrySlots = function() { loadSlots(); };
+
+  async function fetchMonthAvail(year, month) {
+    var key = year + '-' + month;
+    if (monthAvailCache[key]) return monthAvailCache[key];
+    try {
+      var url = API_BASE + '/api/availability/month?year=' + year + '&month=' + month + '&tz=' + encodeURIComponent(USER_TZ);
+      if (S.meetingType && S.meetingType.id) url += '&meeting_type_id=' + S.meetingType.id;
+      var res = await fetch(url);
+      if (!res.ok) return [];
+      var data = await res.json();
+      monthAvailCache[key] = data.dates || [];
+      return monthAvailCache[key];
+    } catch (e) { return []; }
+  }
+
+  // Calendar
+  window.toggleCal = function() {
+    var drop = $('calDrop');
+    if (drop.classList.contains('open')) { drop.classList.remove('open'); return; }
+    calView.m = S.date.getMonth();
+    calView.y = S.date.getFullYear();
+    renderCal();
+    drop.classList.add('open');
+  };
+
+  window.navCal = function(dir) {
+    calView.m += dir;
+    if (calView.m > 11) { calView.m = 0; calView.y++; }
+    if (calView.m < 0) { calView.m = 11; calView.y--; }
+    renderCal();
+  };
+
+  async function renderCal() {
+    $('calMo').textContent = MN[calView.m] + ' ' + calView.y;
+    var grid = $('calGrid');
+    grid.innerHTML = '';
+
+    DN.forEach(function(d) {
+      var el = document.createElement('div');
+      el.className = 'cal-wk';
+      el.textContent = d;
+      grid.appendChild(el);
+    });
+
+    var first = new Date(calView.y, calView.m, 1);
+    var startDay = first.getDay();
+    var daysInMonth = new Date(calView.y, calView.m + 1, 0).getDate();
+    var prevDays = new Date(calView.y, calView.m, 0).getDate();
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    var availDates = await fetchMonthAvail(calView.y, calView.m + 1);
+
+    for (var i = 0; i < startDay; i++) {
+      var el = document.createElement('div');
+      el.className = 'cal-day other';
+      el.textContent = prevDays - startDay + 1 + i;
+      grid.appendChild(el);
+    }
+
+    for (var d = 1; d <= daysInMonth; d++) {
+      var el = document.createElement('div');
+      el.className = 'cal-day';
+      el.textContent = d;
+      var dt = new Date(calView.y, calView.m, d);
+      var isoDate = calView.y + '-' + String(calView.m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+
+      if (dt < today) {
+        el.classList.add('past');
+      } else if (availDates.length > 0 && !availDates.includes(isoDate)) {
+        el.classList.add('no-avail');
+      } else {
+        if (dt.getTime() === today.getTime()) el.classList.add('today');
+        if (S.date.getFullYear() === calView.y && S.date.getMonth() === calView.m && S.date.getDate() === d) el.classList.add('sel');
+        (function(y, m, dd) {
+          el.onclick = function() {
+            S.date = new Date(y, m, dd);
+            S.slot = null;
+            $('btnDatetime').disabled = true;
+            $('calDrop').classList.remove('open');
+            loadSlots();
+          };
+        })(calView.y, calView.m, d);
+      }
+      grid.appendChild(el);
+    }
+
+    var totalCells = startDay + daysInMonth;
+    var remaining = totalCells % 7 === 0 ? 0 : 7 - totalCells % 7;
+    for (var i = 1; i <= remaining; i++) {
+      var el = document.createElement('div');
+      el.className = 'cal-day other';
+      el.textContent = i;
+      grid.appendChild(el);
+    }
+  }
+
+  // Close calendar on outside click
+  document.addEventListener('click', function(e) {
+    var hd = document.querySelector('.cal-hd');
+    if (hd && !hd.contains(e.target)) {
+      var drop = $('calDrop');
+      if (drop) drop.classList.remove('open');
+    }
+  });
+
+  // -- Info step --
+  window.goToInfo = function() {
+    if (!S.slot) return;
+
+    var slotDate = new Date(S.slot.start);
+    var dateStr = slotDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    var timeStr = slotDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    $('infoSlotSummary').textContent = dateStr + ' at ' + timeStr;
+
+    showView('viewInfo');
+  };
+
+  // -- Back navigation --
+  window.goBack = function(from) {
+    if (from === 'datetime') {
+      // Go back to meeting type only if we showed it
+      if (S.plan !== 'mini' && !S.preType && S.meetingTypes.length > 1) {
+        showView('viewMtype');
+      }
+    } else if (from === 'info') {
+      showView('viewDatetime');
+    }
+  };
+
+  // -- Submit booking --
+  window.submitBooking = async function(e) {
+    e.preventDefault();
+    var btn = $('btnBook');
+    btn.disabled = true;
+    btn.textContent = 'Booking...';
+
+    var payload = {
+      guest_name: $('gName').value.trim(),
+      guest_email: $('gEmail').value.trim(),
+      guest_phone: $('gPhone').value.trim(),
+      venue_name: $('gVenue').value.trim(),
+      venue_address: $('gAddress').value.trim(),
+      company: $('gCompany').value.trim(),
+      slot_start: S.slot.start,
+      slot_end: S.slot.end,
+      guest_tz: USER_TZ,
+      plan: S.plan,
+      meeting_type_id: S.meetingType ? S.meetingType.id : null,
+      addons: []
+    };
+
+    try {
+      var res = await fetch(API_BASE + '/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.status === 409) {
+        showToast('That slot was just taken! Please pick another.', true);
+        btn.textContent = 'Book Meeting';
+        btn.disabled = false;
+        showView('viewDatetime');
+        loadSlots();
+        return;
+      }
+
+      if (!res.ok) throw new Error('Booking failed');
+
+      var data = await res.json().catch(function() { return {}; });
+
+      // Success
+      var slotDate = new Date(S.slot.start);
+      var dateStr = slotDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      var timeStr = slotDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      var mtLabel = S.meetingType ? S.meetingType.label : 'Meeting';
+      var staffName = data.booking && data.booking.staff_name;
+
+      $('doneDetails').innerHTML =
+        '<strong>' + mtLabel + '</strong><br>' +
+        dateStr + ' at ' + timeStr + '<br>' +
+        (payload.venue_name ? 'for ' + payload.venue_name : '');
+
+      if (staffName) {
+        var staffLine = document.createElement('div');
+        staffLine.style.marginTop = '4px';
+        staffLine.innerHTML = 'with <strong></strong>';
+        staffLine.querySelector('strong').textContent = staffName;
+        $('doneDetails').appendChild(staffLine);
+      }
+
+      showView('viewDone');
+    } catch (err) {
+      showToast('Booking failed. Please try again.', true);
+      btn.textContent = 'Book Meeting';
+      btn.disabled = false;
+    }
+  };
+
+  // -- Go --
+  init();
+})();
+</script>
+</body>
+</html>
