@@ -921,6 +921,10 @@ tbody tr:hover{background:var(--card)}
       <div class="tbl-wrap">
         <div class="tbl-bar">
           <h2>Meeting Types</h2>
+          <button class="btn-sm btn-sm-teal" onclick="showAllBookingLinks()" style="margin-right:8px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Booking Links
+          </button>
           <button class="btn-sm btn-sm-teal" id="addMtypeBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add Meeting Type
@@ -2471,7 +2475,6 @@ function renderMeetingTypes() {
         <td><div class="mt-days-pills">${dayPills}</div></td>
         <td>${statusBadge}</td>
         <td style="text-align:right;white-space:nowrap">
-          <button class="btn-sm btn-sm-teal" onclick='showBookingLinks(${JSON.stringify(mt.name)}, ${JSON.stringify(mt.label)}, ${JSON.stringify(mt.plans || [])})'>Links</button>
           <button class="btn-sm btn-sm-outline" onclick="editMtype(${mt.id})">Edit</button>
           <button class="btn-sm btn-sm-cancel" onclick="deleteMtype(${mt.id})">Delete</button>
         </td>
@@ -2479,22 +2482,34 @@ function renderMeetingTypes() {
   }).join('');
 }
 
-window.showBookingLinks = function(typeName, typeLabel, plans) {
+window.showAllBookingLinks = function() {
   var body = document.getElementById('linksBody');
-  document.getElementById('linksTitle').textContent = typeLabel + ' - Booking Links';
+  document.getElementById('linksTitle').textContent = 'Booking Links';
 
-  if (!plans || plans.length === 0) {
-    body.innerHTML = '<p style="color:var(--text-light);font-size:13px">No plans assigned to this meeting type.</p>';
+  // Collect unique plans and their meeting types
+  var planMap = {};
+  (meetingTypes || []).forEach(function(mt) {
+    (mt.plans || []).forEach(function(plan) {
+      if (!planMap[plan]) planMap[plan] = [];
+      planMap[plan].push(mt.label);
+    });
+  });
+
+  var plans = Object.keys(planMap);
+  if (plans.length === 0) {
+    body.innerHTML = '<p style="color:var(--text-light);font-size:13px">No plans configured. Assign plans to meeting types first.</p>';
     document.getElementById('linksOverlay').classList.add('open');
     return;
   }
 
   body.innerHTML = plans.map(function(plan, idx) {
-    var url = window.location.origin + '/book.html?plan=' + encodeURIComponent(plan.toLowerCase()) + '&type=' + encodeURIComponent(typeName);
+    var url = window.location.origin + '/book.html?plan=' + encodeURIComponent(plan.toLowerCase());
+    var types = planMap[plan].join(', ');
     window['_linkUrl' + idx] = url;
     return '<div class="link-row">' +
       '<div style="min-width:0;flex:1">' +
         '<div class="link-row-label">' + escHtml(plan) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-light);margin:2px 0">' + escHtml(types) + '</div>' +
         '<div class="link-row-url">' + escHtml(url) + '</div>' +
       '</div>' +
       '<div class="link-row-actions">' +
