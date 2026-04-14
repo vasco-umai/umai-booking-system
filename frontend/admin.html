@@ -2482,76 +2482,60 @@ function renderMeetingTypes() {
   }).join('');
 }
 
-window.showAllBookingLinks = function() {
+window.showAllBookingLinks = async function() {
   var body = document.getElementById('linksBody');
   document.getElementById('linksTitle').textContent = 'Booking Links';
+  body.innerHTML = '<div style="text-align:center;padding:16px"><div class="spinner spinner-dark" style="margin:0 auto"></div></div>';
+  document.getElementById('linksOverlay').classList.add('open');
 
-  // Collect unique plans and their meeting types (with names for URL)
-  var planMap = {};
-  (meetingTypes || []).forEach(function(mt) {
-    (mt.plans || []).forEach(function(plan) {
-      if (!planMap[plan]) planMap[plan] = [];
-      planMap[plan].push({ label: mt.label, name: mt.name });
-    });
-  });
+  var base = window.location.origin + '/book.html';
+  var linkIdx = 0;
 
-  var plans = Object.keys(planMap);
-  if (plans.length === 0) {
-    body.innerHTML = '<p style="color:var(--text-light);font-size:13px">No plans configured. Assign plans to meeting types first.</p>';
-    document.getElementById('linksOverlay').classList.add('open');
-    return;
+  function linkRow(label, url) {
+    window['_linkUrl' + linkIdx] = url;
+    var h = '<div class="link-row">' +
+      '<div style="min-width:0;flex:1">' +
+        '<div class="link-row-label">' + escHtml(label) + '</div>' +
+        '<div class="link-row-url">' + escHtml(url) + '</div>' +
+      '</div>' +
+      '<div class="link-row-actions">' +
+        '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + linkIdx + ')">Copy</button>' +
+        '<a href="' + url + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
+      '</div>' +
+    '</div>';
+    linkIdx++;
+    return h;
   }
 
-  var linkIdx = 0;
-  var html = '';
+  function linksBlock(suffix) {
+    var s = suffix || '';
+    return linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + s) +
+           linkRow('Online only', base + '?plan=essencial&type=online' + s) +
+           linkRow('In-Person only', base + '?plan=essencial&type=in_person' + s) +
+           linkRow('Freemium only', base + '?plan=mini&type=Freemium' + s);
+  }
 
-  plans.forEach(function(plan) {
-    var types = planMap[plan];
-    var base = window.location.origin + '/book.html?plan=' + encodeURIComponent(plan.toLowerCase());
+  var html = '<div style="margin-bottom:20px">';
+  html += '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">General</div>';
+  html += linksBlock();
+  html += '</div>';
 
-    html += '<div style="margin-bottom:16px">';
-    html += '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">' + escHtml(plan) + ' Plan</div>';
-
-    // If multiple types, show "Choice" link first
-    if (types.length > 1) {
-      var choiceUrl = base;
-      var choiceLabel = 'Choice (' + types.map(function(t) { return t.label; }).join(' / ') + ')';
-      window['_linkUrl' + linkIdx] = choiceUrl;
-      html += '<div class="link-row">' +
-        '<div style="min-width:0;flex:1">' +
-          '<div class="link-row-label">' + escHtml(choiceLabel) + '</div>' +
-          '<div class="link-row-url">' + escHtml(choiceUrl) + '</div>' +
-        '</div>' +
-        '<div class="link-row-actions">' +
-          '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + linkIdx + ')">Copy</button>' +
-          '<a href="' + choiceUrl + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
-        '</div>' +
-      '</div>';
-      linkIdx++;
-    }
-
-    // Individual type links
-    types.forEach(function(t) {
-      var typeUrl = base + '&type=' + encodeURIComponent(t.name);
-      window['_linkUrl' + linkIdx] = typeUrl;
-      html += '<div class="link-row">' +
-        '<div style="min-width:0;flex:1">' +
-          '<div class="link-row-label">' + escHtml(t.label) + ' only</div>' +
-          '<div class="link-row-url">' + escHtml(typeUrl) + '</div>' +
-        '</div>' +
-        '<div class="link-row-actions">' +
-          '<button class="btn-sm btn-sm-teal" onclick="copyLinkUrl(window._linkUrl' + linkIdx + ')">Copy</button>' +
-          '<a href="' + typeUrl + '" target="_blank" class="btn-sm btn-sm-outline" style="text-decoration:none;text-align:center">Open</a>' +
-        '</div>' +
-      '</div>';
-      linkIdx++;
+  // Fetch staff members for personal links
+  try {
+    var staff = await apiFetch('/api/admin/staff');
+    var active = (staff || []).filter(function(s) { return s.isActive !== false && s.is_active !== false; });
+    active.forEach(function(s) {
+      var staffSuffix = '&staff_id=' + s.id;
+      html += '<div style="margin-bottom:20px">';
+      html += '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:8px">' + escHtml(s.name) + '</div>';
+      html += linksBlock(staffSuffix);
+      html += '</div>';
     });
-
-    html += '</div>';
-  });
+  } catch (e) {
+    html += '<p style="color:var(--text-light);font-size:13px">Could not load staff members.</p>';
+  }
 
   body.innerHTML = html;
-  document.getElementById('linksOverlay').classList.add('open');
 };
 
 window.copyLinkUrl = function(url) {

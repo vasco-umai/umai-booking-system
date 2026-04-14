@@ -368,6 +368,7 @@ body{
   var params = new URLSearchParams(window.location.search);
   S.plan = params.get('plan');
   S.preType = params.get('type');
+  S.staffId = params.get('staff_id') || null;
   S.prefill = {
     name: params.get('name') || '',
     email: params.get('email') || '',
@@ -404,7 +405,9 @@ body{
     }
 
     try {
-      var res = await fetch(API_BASE + '/api/availability/meeting-types?plan=' + encodeURIComponent(S.plan));
+      var mtUrl = API_BASE + '/api/availability/meeting-types?plan=' + encodeURIComponent(S.plan);
+      if (S.staffId) mtUrl += '&staff_id=' + encodeURIComponent(S.staffId);
+      var res = await fetch(mtUrl);
       var data = await res.json();
       S.meetingTypes = data.meeting_types || [];
     } catch (e) {
@@ -511,6 +514,7 @@ body{
     try {
       var url = API_BASE + '/api/availability/next-available?from=' + todayStr + '&tz=' + encodeURIComponent(USER_TZ);
       if (S.meetingType && S.meetingType.id) url += '&meeting_type_id=' + S.meetingType.id;
+      if (S.staffId) url += '&staff_id=' + encodeURIComponent(S.staffId);
       var res = await fetch(url);
       if (res.ok) {
         var data = await res.json();
@@ -545,6 +549,7 @@ body{
     try {
       var url = API_BASE + '/api/availability?date=' + dateStr + '&tz=' + encodeURIComponent(USER_TZ) + '&duration=' + duration;
       if (S.meetingType && S.meetingType.id) url += '&meeting_type_id=' + S.meetingType.id;
+      if (S.staffId) url += '&staff_id=' + encodeURIComponent(S.staffId);
 
       var res = await fetch(url);
       if (!res.ok) throw new Error('Failed');
@@ -580,6 +585,7 @@ body{
     try {
       var url = API_BASE + '/api/availability/month?year=' + year + '&month=' + month + '&tz=' + encodeURIComponent(USER_TZ);
       if (S.meetingType && S.meetingType.id) url += '&meeting_type_id=' + S.meetingType.id;
+      if (S.staffId) url += '&staff_id=' + encodeURIComponent(S.staffId);
       var res = await fetch(url);
       if (!res.ok) return [];
       var data = await res.json();
@@ -722,6 +728,7 @@ body{
       guest_tz: USER_TZ,
       plan: S.plan,
       meeting_type_id: S.meetingType ? S.meetingType.id : null,
+      staff_member_id: S.staffId || undefined,
       addons: []
     };
 
