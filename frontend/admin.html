@@ -2302,7 +2302,7 @@ function populateTeamLeadDropdown(teamId, selectedLeadId) {
   // If editing, show staff from that team. If creating, show all staff.
   var staffList = [];
   if (teamId) {
-    var team = teamsWithStaff.find(function(t) { return t.id === teamId; });
+    var team = teamsWithStaff.find(function(t) { return String(t.id) === String(teamId); });
     if (team && team.staff) staffList = team.staff;
   } else {
     // For new teams, show staff from all teams
