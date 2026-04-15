@@ -3,7 +3,7 @@ const { DateTime } = require('luxon');
 const { pool } = require('../config/db');
 const logger = require('../lib/logger');
 const { availabilityCache } = require('../lib/cache');
-const { requireAdmin, requireRole } = require('../middleware/auth');
+const { requireAdmin, requireRole, requireTeamLead, getEffectiveTeamId } = require('../middleware/auth');
 const calendarService = require('../services/calendarService');
 const emailService = require('../services/emailService');
 const staffService = require('../services/staffService');
@@ -13,22 +13,142 @@ const router = Router();
 // All admin routes require auth
 router.use(requireAdmin);
 
+// ── Teams ─────────────────────────────────────────
+
+// GET /api/admin/teams
+router.get('/teams', async (req, res, next) => {
+  try {
+    let query, params;
+    if (req.admin.role === 'admin') {
+      // Super admin sees all teams
+      query = `SELECT t.*,
+                 (SELECT COUNT(*) FROM staff_members sm WHERE sm.team_id = t.id) as member_count,
+                 (SELECT au.name FROM admin_users au WHERE au.team_id = t.id AND au.team_role = 'lead' LIMIT 1) as lead_name,
+                 (SELECT au.id FROM admin_users au WHERE au.team_id = t.id AND au.team_role = 'lead' LIMIT 1) as lead_id
+               FROM teams t ORDER BY t.id`;
+      params = [];
+    } else {
+      // Regular users see only their team
+      query = `SELECT t.*,
+                 (SELECT COUNT(*) FROM staff_members sm WHERE sm.team_id = t.id) as member_count,
+                 (SELECT au.name FROM admin_users au WHERE au.team_id = t.id AND au.team_role = 'lead' LIMIT 1) as lead_name,
+                 (SELECT au.id FROM admin_users au WHERE au.team_id = t.id AND au.team_role = 'lead' LIMIT 1) as lead_id
+               FROM teams t WHERE t.id = $1`;
+      params = [req.admin.teamId];
+    }
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// POST /api/admin/teams — create team (super admin only)
+router.post('/teams', requireRole('admin'), async (req, res, next) => {
+  try {
+    const { name, slug, lead_id } = req.body;
+    if (!name || !slug) {
+      return res.status(400).json({ error: 'name and slug are required' });
+    }
+    const { rows } = await pool.query(
+      'INSERT INTO teams (name, slug) VALUES ($1, $2) RETURNING *',
+      [name, slug.toLowerCase().replace(/[^a-z0-9-]/g, '-')]
+    );
+    const team = rows[0];
+
+    // Set team lead if provided
+    if (lead_id) {
+      await pool.query(
+        `UPDATE admin_users SET team_role = 'lead', team_id = $1 WHERE id = $2`,
+        [team.id, lead_id]
+      );
+    }
+
+    res.status(201).json(team);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A team with this slug already exists' });
+    }
+    next(err);
+  }
+});
+
+// PUT /api/admin/teams/:id — update team (super admin only)
+router.put('/teams/:id', requireRole('admin'), async (req, res, next) => {
+  try {
+    const { name, slug, lead_id } = req.body;
+    const teamId = parseInt(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE teams SET
+        name = COALESCE($1, name),
+        slug = COALESCE($2, slug),
+        updated_at = NOW()
+       WHERE id = $3 RETURNING *`,
+      [name, slug ? slug.toLowerCase().replace(/[^a-z0-9-]/g, '-') : null, teamId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Team not found' });
+
+    // Update team lead if provided
+    if (lead_id !== undefined) {
+      // Remove lead role from previous lead(s) on this team
+      await pool.query(
+        `UPDATE admin_users SET team_role = 'member' WHERE team_id = $1 AND team_role = 'lead'`,
+        [teamId]
+      );
+      // Set new lead
+      if (lead_id) {
+        await pool.query(
+          `UPDATE admin_users SET team_role = 'lead' WHERE id = $1 AND team_id = $2`,
+          [lead_id, teamId]
+        );
+      }
+    }
+
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A team with this slug already exists' });
+    }
+    next(err);
+  }
+});
+
+// DELETE /api/admin/teams/:id — delete team (super admin only, only if empty)
+router.delete('/teams/:id', requireRole('admin'), async (req, res, next) => {
+  try {
+    const teamId = parseInt(req.params.id);
+    // Check for staff/bookings
+    const { rows: [counts] } = await pool.query(
+      `SELECT
+        (SELECT COUNT(*) FROM staff_members WHERE team_id = $1) as staff_count,
+        (SELECT COUNT(*) FROM bookings WHERE team_id = $1 AND status = 'confirmed') as booking_count`,
+      [teamId]
+    );
+    if (parseInt(counts.staff_count) > 0 || parseInt(counts.booking_count) > 0) {
+      return res.status(400).json({ error: 'Cannot delete team with active staff or bookings' });
+    }
+    const { rowCount } = await pool.query('DELETE FROM teams WHERE id = $1', [teamId]);
+    if (rowCount === 0) return res.status(404).json({ error: 'Team not found' });
+    res.json({ message: 'Team deleted' });
+  } catch (err) { next(err); }
+});
+
 // ── Schedules ──────────────────────────────────────
 
 // GET /api/admin/schedules?staff_member_id=1 (optional filter)
 router.get('/schedules', async (req, res, next) => {
   try {
     const { staff_member_id } = req.query;
+    const teamId = getEffectiveTeamId(req);
     let query = `SELECT s.*, sm.name as staff_name
                  FROM schedules s
-                 LEFT JOIN staff_members sm ON s.staff_member_id = sm.id`;
-    const params = [];
+                 LEFT JOIN staff_members sm ON s.staff_member_id = sm.id
+                 WHERE s.team_id = $1`;
+    const params = [teamId];
 
     if (staff_member_id === 'global') {
-      query += ' WHERE s.staff_member_id IS NULL';
+      query += ' AND s.staff_member_id IS NULL';
     } else if (staff_member_id) {
       params.push(parseInt(staff_member_id));
-      query += ' WHERE s.staff_member_id = $1';
+      query += ` AND s.staff_member_id = $${params.length}`;
     }
 
     query += ' ORDER BY s.staff_member_id NULLS FIRST, s.day_of_week, s.start_time';
@@ -41,15 +161,16 @@ router.get('/schedules', async (req, res, next) => {
 router.post('/schedules', async (req, res, next) => {
   try {
     const { day_of_week, start_time, end_time, slot_duration, timezone, is_active, staff_member_id } = req.body;
+    const teamId = getEffectiveTeamId(req);
 
     if (day_of_week == null || !start_time || !end_time) {
       return res.status(400).json({ error: 'day_of_week, start_time, and end_time are required' });
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO schedules (day_of_week, start_time, end_time, slot_duration, timezone, is_active, staff_member_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [day_of_week, start_time, end_time, slot_duration || 60, timezone || 'Europe/Lisbon', is_active !== false, staff_member_id || null]
+      `INSERT INTO schedules (day_of_week, start_time, end_time, slot_duration, timezone, is_active, staff_member_id, team_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [day_of_week, start_time, end_time, slot_duration || 60, timezone || 'Europe/Lisbon', is_active !== false, staff_member_id || null, teamId]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
@@ -59,6 +180,7 @@ router.post('/schedules', async (req, res, next) => {
 router.put('/schedules/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const teamId = getEffectiveTeamId(req);
     const { day_of_week, start_time, end_time, slot_duration, timezone, is_active, staff_member_id } = req.body;
 
     const { rows } = await pool.query(
@@ -71,8 +193,8 @@ router.put('/schedules/:id', async (req, res, next) => {
         is_active = COALESCE($6, is_active),
         staff_member_id = $8,
         updated_at = NOW()
-       WHERE id = $7 RETURNING *`,
-      [day_of_week, start_time, end_time, slot_duration, timezone, is_active, id, staff_member_id !== undefined ? staff_member_id : null]
+       WHERE id = $7 AND team_id = $9 RETURNING *`,
+      [day_of_week, start_time, end_time, slot_duration, timezone, is_active, id, staff_member_id !== undefined ? staff_member_id : null, teamId]
     );
 
     if (rows.length === 0) return res.status(404).json({ error: 'Schedule not found' });
@@ -83,7 +205,8 @@ router.put('/schedules/:id', async (req, res, next) => {
 // DELETE /api/admin/schedules/:id
 router.delete('/schedules/:id', async (req, res, next) => {
   try {
-    const { rowCount } = await pool.query('DELETE FROM schedules WHERE id = $1', [req.params.id]);
+    const teamId = getEffectiveTeamId(req);
+    const { rowCount } = await pool.query('DELETE FROM schedules WHERE id = $1 AND team_id = $2', [req.params.id, teamId]);
     if (rowCount === 0) return res.status(404).json({ error: 'Schedule not found' });
     res.json({ message: 'Schedule deleted' });
   } catch (err) { next(err); }
@@ -94,7 +217,8 @@ router.delete('/schedules/:id', async (req, res, next) => {
 // GET /api/admin/blocked-times
 router.get('/blocked-times', async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM blocked_times ORDER BY start_at DESC');
+    const teamId = getEffectiveTeamId(req);
+    const { rows } = await pool.query('SELECT * FROM blocked_times WHERE team_id = $1 ORDER BY start_at DESC', [teamId]);
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -103,12 +227,13 @@ router.get('/blocked-times', async (req, res, next) => {
 router.post('/blocked-times', async (req, res, next) => {
   try {
     const { start_at, end_at, reason } = req.body;
+    const teamId = getEffectiveTeamId(req);
     if (!start_at || !end_at) {
       return res.status(400).json({ error: 'start_at and end_at are required' });
     }
     const { rows } = await pool.query(
-      'INSERT INTO blocked_times (start_at, end_at, reason) VALUES ($1, $2, $3) RETURNING *',
-      [start_at, end_at, reason || null]
+      'INSERT INTO blocked_times (start_at, end_at, reason, team_id) VALUES ($1, $2, $3, $4) RETURNING *',
+      [start_at, end_at, reason || null, teamId]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
@@ -117,7 +242,8 @@ router.post('/blocked-times', async (req, res, next) => {
 // DELETE /api/admin/blocked-times/:id
 router.delete('/blocked-times/:id', async (req, res, next) => {
   try {
-    const { rowCount } = await pool.query('DELETE FROM blocked_times WHERE id = $1', [req.params.id]);
+    const teamId = getEffectiveTeamId(req);
+    const { rowCount } = await pool.query('DELETE FROM blocked_times WHERE id = $1 AND team_id = $2', [req.params.id, teamId]);
     if (rowCount === 0) return res.status(404).json({ error: 'Blocked time not found' });
     res.json({ message: 'Blocked time deleted' });
   } catch (err) { next(err); }
@@ -126,14 +252,15 @@ router.delete('/blocked-times/:id', async (req, res, next) => {
 // ── Staff Members (admin only) ─────────────────────
 
 // GET /api/admin/staff
-router.get('/staff', requireRole('admin'), async (req, res, next) => {
+router.get('/staff', requireTeamLead, async (req, res, next) => {
   try {
-    const staff = await staffService.getAllStaff();
+    const teamId = getEffectiveTeamId(req);
+    const staff = await staffService.getAllStaff(teamId);
 
     // Fetch invite/onboarding info from admin_users for all staff emails
     const emails = staff.map(s => s.email.toLowerCase());
     const { rows: adminRows } = await pool.query(
-      `SELECT email, must_set_password, password_hash, invite_token, invite_token_expires, role
+      `SELECT id as admin_user_id, email, must_set_password, password_hash, invite_token, invite_token_expires, role, team_role
        FROM admin_users WHERE LOWER(email) = ANY($1)`,
       [emails]
     );
@@ -151,9 +278,11 @@ router.get('/staff', requireRole('admin'), async (req, res, next) => {
 
       return {
         ...s,
+        admin_user_id: admin?.admin_user_id || null,
         google_refresh_token: hasCalendar,
         onboarding_status,
         role: admin?.role || 'restricted',
+        team_role: admin?.team_role || 'member',
         invite_token: admin?.invite_token || null,
         invite_token_expired: admin?.invite_token_expires
           ? new Date(admin.invite_token_expires) < new Date()
@@ -165,9 +294,10 @@ router.get('/staff', requireRole('admin'), async (req, res, next) => {
 });
 
 // POST /api/admin/staff
-router.post('/staff', requireRole('admin'), async (req, res, next) => {
+router.post('/staff', requireTeamLead, async (req, res, next) => {
   try {
     const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings } = req.body;
+    const teamId = getEffectiveTeamId(req);
     if (!name || !email) {
       return res.status(400).json({ error: 'name and email are required' });
     }
@@ -178,6 +308,7 @@ router.post('/staff', requireRole('admin'), async (req, res, next) => {
       googleCalendarId: google_calendar_id || null,
       isActive: is_active !== false,
       maxDailyMeetings: max_daily_meetings || 0,
+      teamId,
     });
     res.status(201).json(staff);
   } catch (err) {
@@ -189,7 +320,7 @@ router.post('/staff', requireRole('admin'), async (req, res, next) => {
 });
 
 // POST /api/admin/staff/:id/invite — regenerate invite token
-router.post('/staff/:id/invite', requireRole('admin'), async (req, res, next) => {
+router.post('/staff/:id/invite', requireTeamLead, async (req, res, next) => {
   try {
     const token = await staffService.regenerateInviteToken(req.params.id);
     if (!token) return res.status(404).json({ error: 'Staff member not found' });
@@ -198,7 +329,7 @@ router.post('/staff/:id/invite', requireRole('admin'), async (req, res, next) =>
 });
 
 // PUT /api/admin/staff/:id
-router.put('/staff/:id', requireRole('admin'), async (req, res, next) => {
+router.put('/staff/:id', requireTeamLead, async (req, res, next) => {
   try {
     const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings } = req.body;
     const staff = await staffService.updateStaff(req.params.id, {
@@ -220,7 +351,7 @@ router.put('/staff/:id', requireRole('admin'), async (req, res, next) => {
 });
 
 // DELETE /api/admin/staff/:id
-router.delete('/staff/:id', requireRole('admin'), async (req, res, next) => {
+router.delete('/staff/:id', requireTeamLead, async (req, res, next) => {
   try {
     const deleted = await staffService.deleteStaff(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Staff member not found' });
@@ -231,7 +362,7 @@ router.delete('/staff/:id', requireRole('admin'), async (req, res, next) => {
 // ── Staff Duration Overrides ──────────────────────
 
 // GET /api/admin/staff/:id/duration-overrides
-router.get('/staff/:id/duration-overrides', requireRole('admin'), async (req, res, next) => {
+router.get('/staff/:id/duration-overrides', requireTeamLead, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT sdo.*, mt.name as meeting_type_name, mt.label as meeting_type_label, mt.duration_minutes as default_duration
@@ -246,7 +377,7 @@ router.get('/staff/:id/duration-overrides', requireRole('admin'), async (req, re
 });
 
 // PUT /api/admin/staff/:id/duration-overrides
-router.put('/staff/:id/duration-overrides', requireRole('admin'), async (req, res, next) => {
+router.put('/staff/:id/duration-overrides', requireTeamLead, async (req, res, next) => {
   const client = await pool.connect();
   try {
     const staffId = parseInt(req.params.id, 10);
@@ -298,12 +429,13 @@ router.put('/staff/:id/duration-overrides', requireRole('admin'), async (req, re
 router.get('/bookings', async (req, res, next) => {
   try {
     const { status, from, to } = req.query;
+    const teamId = getEffectiveTeamId(req);
     let query = `SELECT b.*, s.name as staff_name, mt.label as meeting_type_label
                  FROM bookings b
                  LEFT JOIN staff_members s ON b.staff_member_id = s.id
                  LEFT JOIN meeting_types mt ON b.meeting_type_id = mt.id
-                 WHERE 1=1`;
-    const params = [];
+                 WHERE b.team_id = $1`;
+    const params = [teamId];
 
     if (status) {
       params.push(status);
@@ -328,11 +460,12 @@ router.get('/bookings', async (req, res, next) => {
 router.put('/bookings/:id/cancel', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const teamId = getEffectiveTeamId(req);
 
     const { rows } = await pool.query(
       `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
-       WHERE id = $1 AND status = 'confirmed' RETURNING *`,
-      [id]
+       WHERE id = $1 AND status = 'confirmed' AND team_id = $2 RETURNING *`,
+      [id, teamId]
     );
 
     if (rows.length === 0) {
@@ -396,13 +529,15 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
       return res.status(400).json({ error: 'staff_member_id is required', code: 'MISSING_FIELDS' });
     }
 
+    const teamId = getEffectiveTeamId(req);
+
     // Get the booking
     const { rows: bookingRows } = await pool.query(
       `SELECT b.*, mt.label as meeting_type_label, mt.name as meeting_type_name
        FROM bookings b
        LEFT JOIN meeting_types mt ON b.meeting_type_id = mt.id
-       WHERE b.id = $1 AND b.status = 'confirmed'`,
-      [id]
+       WHERE b.id = $1 AND b.status = 'confirmed' AND b.team_id = $2`,
+      [id, teamId]
     );
 
     if (bookingRows.length === 0) {
@@ -514,12 +649,13 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
 router.post('/bookings/:id/resend-confirmation', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const teamId = getEffectiveTeamId(req);
     const { rows } = await pool.query(
       `SELECT b.*, sm.email as staff_email
        FROM bookings b
        LEFT JOIN staff_members sm ON b.staff_member_id = sm.id
-       WHERE b.id = $1`,
-      [id]
+       WHERE b.id = $1 AND b.team_id = $2`,
+      [id, teamId]
     );
 
     if (rows.length === 0) {
@@ -554,14 +690,16 @@ router.post('/bookings/:id/resend-confirmation', async (req, res, next) => {
 // GET /api/admin/meeting-types  — list all with plan mappings + day schedules
 router.get('/meeting-types', async (req, res, next) => {
   try {
+    const teamId = getEffectiveTeamId(req);
     const { rows: types } = await pool.query(
-      'SELECT * FROM meeting_types ORDER BY id'
+      'SELECT * FROM meeting_types WHERE team_id = $1 ORDER BY id', [teamId]
     );
+    const typeIds = types.map(t => t.id);
     const { rows: planMappings } = await pool.query(
-      'SELECT * FROM plan_meeting_types ORDER BY meeting_type_id, plan_name'
+      'SELECT * FROM plan_meeting_types WHERE meeting_type_id = ANY($1) ORDER BY meeting_type_id, plan_name', [typeIds]
     );
     const { rows: schedules } = await pool.query(
-      'SELECT * FROM meeting_type_schedules ORDER BY meeting_type_id, day_of_week'
+      'SELECT * FROM meeting_type_schedules WHERE meeting_type_id = ANY($1) ORDER BY meeting_type_id, day_of_week', [typeIds]
     );
 
     const result = types.map(t => {
@@ -583,13 +721,14 @@ router.get('/meeting-types', async (req, res, next) => {
 router.post('/meeting-types', async (req, res, next) => {
   try {
     const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings } = req.body;
+    const teamId = getEffectiveTeamId(req);
     if (!name || !label || !duration_minutes) {
       return res.status(400).json({ error: 'name, label, and duration_minutes are required' });
     }
     const { rows } = await pool.query(
-      `INSERT INTO meeting_types (name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [name, label, duration_minutes, is_active !== false, buffer_minutes || 0, min_advance_minutes != null ? min_advance_minutes : 60, max_daily_meetings || 0]
+      `INSERT INTO meeting_types (name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings, team_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [name, label, duration_minutes, is_active !== false, buffer_minutes || 0, min_advance_minutes != null ? min_advance_minutes : 60, max_daily_meetings || 0, teamId]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -604,6 +743,7 @@ router.post('/meeting-types', async (req, res, next) => {
 router.put('/meeting-types/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const teamId = getEffectiveTeamId(req);
     const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings } = req.body;
     const { rows } = await pool.query(
       `UPDATE meeting_types SET
@@ -615,8 +755,8 @@ router.put('/meeting-types/:id', async (req, res, next) => {
         min_advance_minutes = COALESCE($6, min_advance_minutes),
         max_daily_meetings = COALESCE($7, max_daily_meetings),
         updated_at = NOW()
-       WHERE id = $8 RETURNING *`,
-      [name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings, id]
+       WHERE id = $8 AND team_id = $9 RETURNING *`,
+      [name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings, id, teamId]
     );
     if (rows.length === 0) return res.status(404).json({ error: 'Meeting type not found' });
     res.json(rows[0]);
@@ -631,7 +771,8 @@ router.put('/meeting-types/:id', async (req, res, next) => {
 // DELETE /api/admin/meeting-types/:id
 router.delete('/meeting-types/:id', async (req, res, next) => {
   try {
-    const { rowCount } = await pool.query('DELETE FROM meeting_types WHERE id = $1', [req.params.id]);
+    const teamId = getEffectiveTeamId(req);
+    const { rowCount } = await pool.query('DELETE FROM meeting_types WHERE id = $1 AND team_id = $2', [req.params.id, teamId]);
     if (rowCount === 0) return res.status(404).json({ error: 'Meeting type not found' });
     res.json({ message: 'Meeting type deleted' });
   } catch (err) { next(err); }

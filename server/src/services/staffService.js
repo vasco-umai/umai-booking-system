@@ -18,7 +18,11 @@ const PROTECTED_ADMIN_EMAILS = [
  * Get all staff members, ordered by name.
  * @returns {Array<object>}
  */
-async function getAllStaff() {
+async function getAllStaff(teamId) {
+  if (teamId) {
+    const { rows } = await pool.query('SELECT * FROM staff_members WHERE team_id = $1 ORDER BY name', [teamId]);
+    return rows;
+  }
   const { rows } = await pool.query('SELECT * FROM staff_members ORDER BY name');
   return rows;
 }
@@ -28,7 +32,19 @@ async function getAllStaff() {
  * meeting percentage. These are the staff eligible for meeting assignment.
  * @returns {Array<object>}
  */
-async function getActiveStaffWithCalendar() {
+async function getActiveStaffWithCalendar(teamId) {
+  if (teamId) {
+    const { rows } = await pool.query(
+      `SELECT * FROM staff_members
+       WHERE is_active = true
+         AND google_refresh_token IS NOT NULL
+         AND meeting_pct > 0
+         AND team_id = $1
+       ORDER BY name`,
+      [teamId]
+    );
+    return rows;
+  }
   const { rows } = await pool.query(
     `SELECT * FROM staff_members
      WHERE is_active = true
@@ -62,12 +78,12 @@ async function getStaffById(id) {
  * @param {boolean} [data.isActive=true]
  * @returns {object} The created staff row.
  */
-async function createStaff({ name, email, meetingPct = 100, googleCalendarId = null, isActive = true, maxDailyMeetings = 0 }) {
+async function createStaff({ name, email, meetingPct = 100, googleCalendarId = null, isActive = true, maxDailyMeetings = 0, teamId }) {
   const { rows } = await pool.query(
-    `INSERT INTO staff_members (name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO staff_members (name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings, team_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings || 0]
+    [name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings || 0, teamId]
   );
 
   // Also create an admin_users login so the team member can log in
@@ -83,9 +99,9 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
     // New user -- create admin_users record with appropriate role
     const role = PROTECTED_ADMIN_EMAILS.includes(email.toLowerCase()) ? 'admin' : 'restricted';
     await pool.query(
-      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires)
-       VALUES (LOWER($1), NULL, $2, true, $3, $4, $5)`,
-      [email, name, role, inviteToken, inviteExpires]
+      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires, team_id)
+       VALUES (LOWER($1), NULL, $2, true, $3, $4, $5, $6)`,
+      [email, name, role, inviteToken, inviteExpires, teamId]
     );
   } else {
     const admin = existingAdmin[0];
@@ -167,11 +183,11 @@ async function deleteStaff(id) {
  * @returns {object|null} The selected staff member, or null if none available
  *                        (caller should fall back to legacy single-calendar).
  */
-async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0, maxDailyMeetings = 0) {
-  logger.info({ slotStart, slotEnd, bufferMinutes }, '[ASSIGN] Staff assignment started');
+async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0, maxDailyMeetings = 0, { teamId, meetingTypeId } = {}) {
+  logger.info({ slotStart, slotEnd, bufferMinutes, teamId, meetingTypeId }, '[ASSIGN] Staff assignment started');
 
-  // 1. Get all eligible staff
-  const eligibleStaff = await getActiveStaffWithCalendar();
+  // 1. Get all eligible staff (team-scoped if teamId provided)
+  const eligibleStaff = await getActiveStaffWithCalendar(teamId);
   logger.info({ staff: eligibleStaff.map(s => `${s.name} (${s.meeting_pct}%)`) }, '[ASSIGN] Eligible staff');
 
   if (eligibleStaff.length === 0) {
@@ -362,23 +378,37 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0, maxDail
     }
   }
 
-  // 6. Compute adjusted weights
-  const totalPct = underLimitStaff.reduce((sum, s) => sum + s.meeting_pct, 0);
+  // 6. Compute adjusted weights (per-meeting-type weights if available)
+  // Look up per-meeting-type weights from staff_meeting_weights table
+  const staffWeightMap = {};
+  if (meetingTypeId) {
+    const { rows: weightRows } = await pool.query(
+      `SELECT staff_member_id, weight FROM staff_meeting_weights
+       WHERE staff_member_id = ANY($1) AND meeting_type_id = $2`,
+      [freeIds, meetingTypeId]
+    );
+    for (const w of weightRows) staffWeightMap[w.staff_member_id] = w.weight;
+  }
+  // For each staff, use per-meeting-type weight if available, else fall back to global meeting_pct
+  const getWeight = (s) => staffWeightMap[s.id] != null ? staffWeightMap[s.id] : s.meeting_pct;
+
+  const totalPct = underLimitStaff.reduce((sum, s) => sum + getWeight(s), 0);
   let weights;
 
   if (totalBookings < underLimitStaff.length) {
-    weights = underLimitStaff.map((s) => s.meeting_pct);
+    weights = underLimitStaff.map((s) => getWeight(s));
   } else {
     weights = underLimitStaff.map((s) => {
-      const expectedRatio = s.meeting_pct / totalPct;
+      const pct = getWeight(s);
+      const expectedRatio = pct / totalPct;
       const actualRatio = bookingCounts[s.id] / totalBookings;
 
-      // adjustedWeight = meeting_pct * (expectedRatio / actualRatio)
+      // adjustedWeight = weight * (expectedRatio / actualRatio)
       // Cap the multiplier between 0.1 and 10 to avoid extreme swings
       let multiplier = expectedRatio / actualRatio;
       multiplier = Math.max(0.1, Math.min(10, multiplier));
 
-      return s.meeting_pct * multiplier;
+      return pct * multiplier;
     });
   }
 
@@ -424,9 +454,9 @@ async function regenerateInviteToken(staffId) {
     logger.info({ email: staff.email, staffId }, '[INVITE] No admin_users record found, creating one');
     const role = PROTECTED_ADMIN_EMAILS.includes(staff.email.toLowerCase()) ? 'admin' : 'restricted';
     await pool.query(
-      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires)
-       VALUES (LOWER($1), NULL, $2, true, $3, $4, $5)`,
-      [staff.email, staff.name, role, inviteToken, inviteExpires]
+      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires, team_id)
+       VALUES (LOWER($1), NULL, $2, true, $3, $4, $5, $6)`,
+      [staff.email, staff.name, role, inviteToken, inviteExpires, staff.team_id]
     );
   } else {
     logger.info({ email: staff.email, staffId, rowCount: result.rowCount }, '[INVITE] Token regenerated');

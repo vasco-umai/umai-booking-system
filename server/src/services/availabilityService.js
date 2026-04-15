@@ -60,7 +60,7 @@ function overlaps(startMs, endMs, interval, bufferMs = 0) {
  * @param {string} userTz - User's IANA timezone
  * @returns {Array<{start: string, end: string, display: string}>}
  */
-async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meetingTypeId, staffId, prefetchedBusy) {
+async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meetingTypeId, staffId, prefetchedBusy, teamId) {
   const userDate = DateTime.fromISO(dateStr, { zone: userTz });
   if (!userDate.isValid) {
     throw Object.assign(new Error('Invalid date'), { status: 400 });
@@ -102,7 +102,7 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
   const bufferMs = bufferMinutes * 60 * 1000;
 
   // Determine mode
-  let activeStaff = await staffService.getActiveStaffWithCalendar();
+  let activeStaff = await staffService.getActiveStaffWithCalendar(teamId);
 
   // Filter to specific staff member if requested
   if (staffId && activeStaff.length > 0) {
@@ -111,24 +111,27 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
   }
 
   if (activeStaff.length > 0) {
-    return getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs, minAdvanceMinutes, prefetchedBusy);
+    return getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs, minAdvanceMinutes, prefetchedBusy, teamId);
   }
-  return getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride, bufferMs, minAdvanceMinutes);
+  return getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride, bufferMs, minAdvanceMinutes, teamId);
 }
 
 // -----------------------------------------------------------------------
 // MULTI-STAFF MODE
 // -----------------------------------------------------------------------
-async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs = 0, minAdvanceMinutes = 60, prefetchedBusy) {
-  // 1. Get schedules: per-staff + global fallback
+async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs = 0, minAdvanceMinutes = 60, prefetchedBusy, teamId) {
+  // 1. Get schedules: per-staff + global fallback (team-scoped)
   const staffIds = activeStaff.map(s => s.id);
 
-  const { rows: allSchedules } = await pool.query(
-    `SELECT * FROM schedules
+  let scheduleQuery = `SELECT * FROM schedules
      WHERE day_of_week = $1 AND is_active = true
-       AND (staff_member_id = ANY($2) OR staff_member_id IS NULL)`,
-    [dayOfWeek, staffIds]
-  );
+       AND (staff_member_id = ANY($2) OR staff_member_id IS NULL)`;
+  const scheduleParams = [dayOfWeek, staffIds];
+  if (teamId) {
+    scheduleParams.push(teamId);
+    scheduleQuery += ` AND team_id = $${scheduleParams.length}`;
+  }
+  const { rows: allSchedules } = await pool.query(scheduleQuery, scheduleParams);
 
   if (allSchedules.length === 0) return [];
 
@@ -195,21 +198,27 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
   const dayStart = uniqueSlots[0].start;
   const dayEnd = uniqueSlots[uniqueSlots.length - 1].end;
 
-  // 4. Get confirmed bookings for the day INCLUDING staff_member_id
-  const { rows: bookings } = await pool.query(
-    `SELECT slot_start, slot_end, staff_member_id FROM bookings
+  // 4. Get confirmed bookings for the day INCLUDING staff_member_id (team-scoped)
+  let bookingsQuery = `SELECT slot_start, slot_end, staff_member_id FROM bookings
      WHERE status = 'confirmed'
        AND slot_start < $2
-       AND slot_end > $1`,
-    [dayStart.toISO(), dayEnd.toISO()]
-  );
+       AND slot_end > $1`;
+  const bookingsParams = [dayStart.toISO(), dayEnd.toISO()];
+  if (teamId) {
+    bookingsParams.push(teamId);
+    bookingsQuery += ` AND team_id = $${bookingsParams.length}`;
+  }
+  const { rows: bookings } = await pool.query(bookingsQuery, bookingsParams);
 
-  // 5. Get globally blocked times
-  const { rows: blocked } = await pool.query(
-    `SELECT start_at, end_at FROM blocked_times
-     WHERE start_at < $2 AND end_at > $1`,
-    [dayStart.toISO(), dayEnd.toISO()]
-  );
+  // 5. Get globally blocked times (team-scoped)
+  let blockedQuery = `SELECT start_at, end_at FROM blocked_times
+     WHERE start_at < $2 AND end_at > $1`;
+  const blockedParams = [dayStart.toISO(), dayEnd.toISO()];
+  if (teamId) {
+    blockedParams.push(teamId);
+    blockedQuery += ` AND team_id = $${blockedParams.length}`;
+  }
+  const { rows: blocked } = await pool.query(blockedQuery, blockedParams);
 
   // 6. Get per-staff busy times via OAuth (each staff member's own token)
   // If prefetchedBusy is provided (batch mode), use it instead of making API calls
@@ -328,11 +337,14 @@ async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeSta
 // -----------------------------------------------------------------------
 // LEGACY SINGLE-CALENDAR MODE
 // -----------------------------------------------------------------------
-async function getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride, bufferMs = 0, minAdvanceMinutes = 60) {
-  const { rows: schedules } = await pool.query(
-    'SELECT * FROM schedules WHERE day_of_week = $1 AND is_active = true AND staff_member_id IS NULL',
-    [dayOfWeek]
-  );
+async function getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride, bufferMs = 0, minAdvanceMinutes = 60, teamId) {
+  let legacySchedQuery = 'SELECT * FROM schedules WHERE day_of_week = $1 AND is_active = true AND staff_member_id IS NULL';
+  const legacySchedParams = [dayOfWeek];
+  if (teamId) {
+    legacySchedParams.push(teamId);
+    legacySchedQuery += ` AND team_id = $${legacySchedParams.length}`;
+  }
+  const { rows: schedules } = await pool.query(legacySchedQuery, legacySchedParams);
 
   if (schedules.length === 0) return [];
 
@@ -416,7 +428,7 @@ async function getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverr
  * @param {string} userTz
  * @returns {Array<string>} Array of YYYY-MM-DD dates that have slots
  */
-async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId, staffId) {
+async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId, staffId, teamId) {
   // Get meeting type day restrictions
   let mtDisabledDays = new Set();
   if (meetingTypeId) {
@@ -428,7 +440,7 @@ async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId, 
     mtDisabledDays = new Set(rows.map(r => r.day_of_week));
   }
 
-  let activeStaff = await staffService.getActiveStaffWithCalendar();
+  let activeStaff = await staffService.getActiveStaffWithCalendar(teamId);
 
   // Filter to specific staff member if requested
   if (staffId && activeStaff.length > 0) {
@@ -440,15 +452,23 @@ async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId, 
   let scheduleParams = [];
 
   if (activeStaff.length > 0) {
-    // Get days covered by per-staff schedules + global fallback
+    // Get days covered by per-staff schedules + global fallback (team-scoped)
     const staffIds = activeStaff.map(s => s.id);
     scheduleQuery = `SELECT DISTINCT day_of_week, staff_member_id FROM schedules
                      WHERE is_active = true
                        AND (staff_member_id = ANY($1) OR staff_member_id IS NULL)`;
     scheduleParams = [staffIds];
+    if (teamId) {
+      scheduleParams.push(teamId);
+      scheduleQuery += ` AND team_id = $${scheduleParams.length}`;
+    }
   } else {
     scheduleQuery = `SELECT DISTINCT day_of_week FROM schedules
                      WHERE is_active = true AND staff_member_id IS NULL`;
+    if (teamId) {
+      scheduleParams.push(teamId);
+      scheduleQuery += ` AND team_id = $${scheduleParams.length}`;
+    }
   }
 
   const { rows: schedules } = await pool.query(scheduleQuery, scheduleParams);
@@ -523,7 +543,7 @@ async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId, 
  * @param {number} [maxDaysAhead=60] - Max days to search ahead
  * @returns {string|null} YYYY-MM-DD or null if none found
  */
-async function getNextAvailableDate(fromDateStr, userTz = 'UTC', durationOverride, meetingTypeId, staffId, maxDaysAhead = 60) {
+async function getNextAvailableDate(fromDateStr, userTz = 'UTC', durationOverride, meetingTypeId, staffId, maxDaysAhead = 60, teamId) {
   const fromDate = DateTime.fromISO(fromDateStr, { zone: userTz });
   if (!fromDate.isValid) return null;
 
@@ -532,7 +552,7 @@ async function getNextAvailableDate(fromDateStr, userTz = 'UTC', durationOverrid
   // Pre-fetch Google Calendar data for the entire search range (one call per staff)
   // This avoids N_dates x N_staff API calls in the loop below
   let prefetchedBusy = null;
-  let activeStaff = await staffService.getActiveStaffWithCalendar();
+  let activeStaff = await staffService.getActiveStaffWithCalendar(teamId);
   if (staffId) {
     activeStaff = activeStaff.filter(s => s.id === staffId);
   }
@@ -550,12 +570,12 @@ async function getNextAvailableDate(fromDateStr, userTz = 'UTC', durationOverrid
   let checkedMonths = 0;
 
   while (checkedMonths < 3) {
-    const candidates = await getMonthAvailability(currentMonth.year, currentMonth.month, userTz, meetingTypeId, staffId);
+    const candidates = await getMonthAvailability(currentMonth.year, currentMonth.month, userTz, meetingTypeId, staffId, teamId);
 
     const validCandidates = candidates.filter(d => d >= fromDateStr && d <= limitDate.toISODate()).sort();
 
     for (const dateStr of validCandidates) {
-      const slots = await getAvailableSlots(dateStr, userTz, durationOverride, meetingTypeId, staffId, prefetchedBusy);
+      const slots = await getAvailableSlots(dateStr, userTz, durationOverride, meetingTypeId, staffId, prefetchedBusy, teamId);
       if (slots.length > 0) {
         return dateStr;
       }

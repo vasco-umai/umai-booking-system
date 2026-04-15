@@ -7,10 +7,17 @@ const { isValidISODate } = require('../middleware/validate');
 
 const router = Router();
 
-// GET /api/availability?date=YYYY-MM-DD&tz=America/New_York&meeting_type_id=1
+// Helper: resolve team_id from team slug query param
+async function resolveTeamId(teamSlug) {
+  if (!teamSlug) return undefined;
+  const { rows } = await pool.query('SELECT id FROM teams WHERE slug = $1', [teamSlug]);
+  return rows.length > 0 ? rows[0].id : undefined;
+}
+
+// GET /api/availability?date=YYYY-MM-DD&tz=America/New_York&meeting_type_id=1&team=customer-success
 router.get('/', async (req, res, next) => {
   try {
-    const { date, tz, duration, meeting_type_id, staff_id } = req.query;
+    const { date, tz, duration, meeting_type_id, staff_id, team } = req.query;
     if (!date) {
       return res.status(400).json({ error: 'date parameter is required (YYYY-MM-DD)', code: 'MISSING_FIELDS' });
     }
@@ -21,33 +28,35 @@ router.get('/', async (req, res, next) => {
     const durationOverride = duration ? parseInt(duration, 10) : undefined;
     const mtId = meeting_type_id ? parseInt(meeting_type_id, 10) : undefined;
     const staffId = staff_id ? parseInt(staff_id, 10) : undefined;
-    const slots = await getAvailableSlots(date, timezone, durationOverride, mtId, staffId);
+    const teamId = await resolveTeamId(team);
+    const slots = await getAvailableSlots(date, timezone, durationOverride, mtId, staffId, undefined, teamId);
     res.json({ date, timezone, slots });
   } catch (err) {
     next(err);
   }
 });
 
-// GET /api/availability/month?year=2024&month=3&tz=America/New_York&meeting_type_id=1
+// GET /api/availability/month?year=2024&month=3&tz=America/New_York&meeting_type_id=1&team=customer-success
 router.get('/month', async (req, res, next) => {
   try {
-    const { year, month, tz, meeting_type_id, staff_id } = req.query;
+    const { year, month, tz, meeting_type_id, staff_id, team } = req.query;
     if (!year || !month) {
       return res.status(400).json({ error: 'year and month parameters are required', code: 'MISSING_FIELDS' });
     }
     const timezone = tz || 'UTC';
     const mtId = meeting_type_id ? parseInt(meeting_type_id, 10) : undefined;
     const staffId = staff_id ? parseInt(staff_id, 10) : undefined;
+    const teamId = await resolveTeamId(team);
 
-    // Check cache first (include staff_id in cache key)
-    const cacheKey = `month:${year}-${month}-${timezone}-${mtId || 'all'}-staff${staffId || 'all'}`;
+    // Check cache first (include staff_id and team in cache key)
+    const cacheKey = `month:${year}-${month}-${timezone}-${mtId || 'all'}-staff${staffId || 'all'}-team${teamId || 'all'}`;
     const cached = availabilityCache.get(cacheKey);
     if (cached) {
       logger.debug({ cacheKey }, 'Month availability cache hit');
       return res.json(cached);
     }
 
-    const dates = await getMonthAvailability(parseInt(year), parseInt(month), timezone, mtId, staffId);
+    const dates = await getMonthAvailability(parseInt(year), parseInt(month), timezone, mtId, staffId, teamId);
     const result = { year: parseInt(year), month: parseInt(month), timezone, dates };
 
     // Cache the result
@@ -59,10 +68,10 @@ router.get('/month', async (req, res, next) => {
   }
 });
 
-// GET /api/availability/next-available?from=YYYY-MM-DD&tz=...&meeting_type_id=1&staff_id=1
+// GET /api/availability/next-available?from=YYYY-MM-DD&tz=...&meeting_type_id=1&staff_id=1&team=customer-success
 router.get('/next-available', async (req, res, next) => {
   try {
-    const { from, tz, duration, meeting_type_id, staff_id } = req.query;
+    const { from, tz, duration, meeting_type_id, staff_id, team } = req.query;
     if (!from) {
       return res.status(400).json({ error: 'from parameter is required (YYYY-MM-DD)', code: 'MISSING_FIELDS' });
     }
@@ -73,29 +82,34 @@ router.get('/next-available', async (req, res, next) => {
     const durationOverride = duration ? parseInt(duration, 10) : undefined;
     const mtId = meeting_type_id ? parseInt(meeting_type_id, 10) : undefined;
     const staffId = staff_id ? parseInt(staff_id, 10) : undefined;
+    const teamId = await resolveTeamId(team);
 
-    const date = await getNextAvailableDate(from, timezone, durationOverride, mtId, staffId);
+    const date = await getNextAvailableDate(from, timezone, durationOverride, mtId, staffId, 60, teamId);
     res.json({ date });
   } catch (err) {
     next(err);
   }
 });
 
-// GET /api/availability/meeting-types?plan=pro&staff_id=1  — public endpoint
+// GET /api/availability/meeting-types?plan=pro&staff_id=1&team=customer-success  — public endpoint
 router.get('/meeting-types', async (req, res, next) => {
   try {
-    const { plan, staff_id } = req.query;
+    const { plan, staff_id, team } = req.query;
     if (!plan) {
       return res.status(400).json({ error: 'plan parameter is required' });
     }
-    const { rows } = await pool.query(
-      `SELECT mt.id, mt.name, mt.label, mt.duration_minutes, mt.buffer_minutes, mt.min_advance_minutes
+    const teamId = await resolveTeamId(team);
+    let mtQuery = `SELECT mt.id, mt.name, mt.label, mt.duration_minutes, mt.buffer_minutes, mt.min_advance_minutes
        FROM meeting_types mt
        JOIN plan_meeting_types pmt ON pmt.meeting_type_id = mt.id
-       WHERE pmt.plan_name = $1 AND mt.is_active = true
-       ORDER BY mt.id`,
-      [plan]
-    );
+       WHERE pmt.plan_name = $1 AND mt.is_active = true`;
+    const mtParams = [plan];
+    if (teamId) {
+      mtParams.push(teamId);
+      mtQuery += ` AND mt.team_id = $${mtParams.length}`;
+    }
+    mtQuery += ' ORDER BY mt.id';
+    const { rows } = await pool.query(mtQuery, mtParams);
 
     // If staff_id is provided, overlay staff-specific duration overrides
     if (staff_id) {
