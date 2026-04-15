@@ -504,6 +504,7 @@ tbody tr:hover{background:var(--card)}
 }
 #tab-meetings .mt-name-cell strong{font-weight:600;font-size:14px}
 #tab-meetings .mt-name-cell .mt-key{font-size:11px;color:var(--text-light);font-weight:400}
+.mt-team-badge{padding:3px 10px;border-radius:var(--r-pill);font-size:10px;font-weight:600;background:#f0e6ff;color:#7c3aed;margin-left:6px;vertical-align:middle}
 #tab-meetings .mt-plan-tags{display:flex;gap:4px;flex-wrap:wrap}
 #tab-meetings .mt-plan-tag{
   padding:3px 10px;border-radius:var(--r-pill);
@@ -3034,7 +3035,7 @@ function renderMeetingTypes() {
       <tr>
         <td>
           <div class="mt-name-cell">
-            <strong>${escHtml(mt.label)}</strong>
+            <strong>${escHtml(mt.label)}</strong>${mt.teamName ? '<span class="mt-team-badge">' + escHtml(mt.teamName) + '</span>' : ''}
             <span class="mt-key">${escHtml(mt.name)}</span>
           </div>
         </td>

@@ -691,9 +691,17 @@ router.post('/bookings/:id/resend-confirmation', async (req, res, next) => {
 router.get('/meeting-types', async (req, res, next) => {
   try {
     const teamId = getEffectiveTeamId(req);
-    const { rows: types } = await pool.query(
-      'SELECT * FROM meeting_types WHERE team_id = $1 ORDER BY id', [teamId]
-    );
+    // Super admin sees all teams' meeting types with team name; others see only their team
+    let typesQuery;
+    let typesParams;
+    if (req.admin.role === 'admin' && !req.query.team_id) {
+      typesQuery = 'SELECT mt.*, t.name as team_name, t.slug as team_slug FROM meeting_types mt LEFT JOIN teams t ON t.id = mt.team_id ORDER BY mt.team_id, mt.id';
+      typesParams = [];
+    } else {
+      typesQuery = 'SELECT mt.*, t.name as team_name, t.slug as team_slug FROM meeting_types mt LEFT JOIN teams t ON t.id = mt.team_id WHERE mt.team_id = $1 ORDER BY mt.id';
+      typesParams = [teamId];
+    }
+    const { rows: types } = await pool.query(typesQuery, typesParams);
     const typeIds = types.map(t => t.id);
     const { rows: planMappings } = await pool.query(
       'SELECT * FROM plan_meeting_types WHERE meeting_type_id = ANY($1) ORDER BY meeting_type_id, plan_name', [typeIds]
