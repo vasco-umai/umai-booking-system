@@ -1276,6 +1276,19 @@ function getTokenRole() {
   } catch { return 'restricted'; }
 }
 
+function getTokenTeamRole() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.teamRole || 'member';
+  } catch { return 'member'; }
+}
+
+function isTeamAdmin() {
+  return getTokenRole() === 'admin' || getTokenTeamRole() === 'lead';
+}
+
 /* ---------- Team helpers ---------- */
 let selectedTeamId = null;
 let selectedTeamSlug = null;
@@ -1407,30 +1420,48 @@ function showDash() {
 
   // Role-based tab visibility
   const role = getTokenRole();
+  const teamRole = getTokenTeamRole();
   const staffBtn = document.querySelector('.tab-btn[data-tab="staff"]');
   const staffPanel = document.getElementById('tab-staff');
   const teamsView = document.getElementById('teamsView');
   const staffView = document.getElementById('staffView');
-  if (role !== 'admin') {
-    staffBtn.style.display = 'none';
-    staffPanel.style.display = 'none';
-    // Team leads: show staff view
-    teamsView.style.display = 'none';
-    staffView.style.display = '';
-  } else {
+
+  if (role === 'admin') {
+    // Super admin: show Teams tab with accordion cards
     staffBtn.style.display = '';
     staffBtn.textContent = 'Teams';
     staffPanel.style.display = '';
-    // Admins: show teams view
     teamsView.style.display = '';
     staffView.style.display = 'none';
     loadTeams();
+  } else if (teamRole === 'lead') {
+    // Team lead: show Staff tab with their team's staff (full admin for their team)
+    staffBtn.style.display = '';
+    staffBtn.textContent = 'Staff';
+    staffPanel.style.display = '';
+    teamsView.style.display = 'none';
+    staffView.style.display = '';
+    loadStaff();
+  } else {
+    // Regular members: hide staff/teams tab
+    staffBtn.style.display = 'none';
+    staffPanel.style.display = 'none';
+    teamsView.style.display = 'none';
+    staffView.style.display = '';
   }
 
   loadSchedules();
   loadBlocked();
   loadBookings();
   loadMeetingTypes();
+
+  // Auto-select Bookings tab
+  $$('.tab-btn').forEach(b => b.classList.remove('active'));
+  $$('.tab-panel').forEach(p => p.classList.remove('active'));
+  var bookingsBtn = document.querySelector('.tab-btn[data-tab="bookings"]');
+  var bookingsPanel = document.getElementById('tab-bookings');
+  if (bookingsBtn) bookingsBtn.classList.add('active');
+  if (bookingsPanel) bookingsPanel.classList.add('active');
 
   // Init team picker (async, non-blocking)
   initTeamPicker();
