@@ -111,7 +111,7 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
   }
 
   if (activeStaff.length > 0) {
-    return getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs, minAdvanceMinutes, prefetchedBusy, teamId);
+    return getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs, minAdvanceMinutes, prefetchedBusy, teamId, maxDailyMeetings);
   }
   return getAvailableSlotsLegacy(dateStr, userTz, dayOfWeek, durationOverride, bufferMs, minAdvanceMinutes, teamId);
 }
@@ -119,7 +119,7 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
 // -----------------------------------------------------------------------
 // MULTI-STAFF MODE
 // -----------------------------------------------------------------------
-async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs = 0, minAdvanceMinutes = 60, prefetchedBusy, teamId) {
+async function getAvailableSlotsMultiStaff(dateStr, userTz, dayOfWeek, activeStaff, durationOverride, bufferMs = 0, minAdvanceMinutes = 60, prefetchedBusy, teamId, maxDailyMeetings = 0) {
   // 1. Get schedules: per-staff + global fallback (team-scoped)
   const staffIds = activeStaff.map(s => s.id);
 

@@ -842,4 +842,60 @@ router.put('/meeting-types/:id/schedule', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/admin/meeting-types/:id/weights  — staff weights for this meeting type
+router.get('/meeting-types/:id/weights', requireTeamLead, async (req, res, next) => {
+  try {
+    const meetingTypeId = parseInt(req.params.id);
+    const teamId = getEffectiveTeamId(req);
+
+    const { rows } = await pool.query(
+      `SELECT sm.id, sm.name, sm.email, sm.meeting_pct,
+              COALESCE(smw.weight, sm.meeting_pct) as weight
+       FROM staff_members sm
+       LEFT JOIN staff_meeting_weights smw ON smw.staff_member_id = sm.id AND smw.meeting_type_id = $1
+       WHERE sm.team_id = $2 AND sm.is_active = true
+       ORDER BY sm.name`,
+      [meetingTypeId, teamId]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// PUT /api/admin/meeting-types/:id/weights  — bulk upsert staff weights
+router.put('/meeting-types/:id/weights', requireTeamLead, async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const meetingTypeId = parseInt(req.params.id);
+    const { weights } = req.body; // [{staff_member_id, weight}]
+
+    if (!Array.isArray(weights)) {
+      return res.status(400).json({ error: 'weights must be an array of {staff_member_id, weight}' });
+    }
+
+    await client.query('BEGIN');
+
+    // Delete existing weights for this meeting type
+    await client.query('DELETE FROM staff_meeting_weights WHERE meeting_type_id = $1', [meetingTypeId]);
+
+    // Insert new weights
+    for (const w of weights) {
+      if (w.staff_member_id && w.weight != null) {
+        await client.query(
+          `INSERT INTO staff_meeting_weights (staff_member_id, meeting_type_id, weight)
+           VALUES ($1, $2, $3)`,
+          [w.staff_member_id, meetingTypeId, w.weight]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({ message: 'Weights updated' });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(err);
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

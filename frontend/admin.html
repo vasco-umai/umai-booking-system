@@ -1080,6 +1080,10 @@ tbody tr:hover{background:var(--card)}
               <input class="if-input" type="number" id="mt-max-daily" value="0" min="0" max="20" placeholder="0 = unlimited">
             </div>
             <div class="if-group">
+              <label>Min Advance (hours)</label>
+              <input class="if-input" type="number" id="mt-min-advance" value="1" min="0" max="168" step="0.5" placeholder="e.g. 1">
+            </div>
+            <div class="if-group">
               <label>Active</label>
               <div class="mt-toggle-row">
                 <div class="mt-toggle on" id="mt-active-toggle" onclick="toggleMtActive()">
@@ -1137,6 +1141,11 @@ tbody tr:hover{background:var(--card)}
                 <input type="checkbox" data-day="6">Sat
               </label>
             </div>
+          </div>
+
+          <div class="mt-form-section" id="mt-weights-section" style="display:none">
+            <span class="mt-form-section-title">Staff Assignment %</span>
+            <div id="mt-weights-list" style="display:flex;flex-direction:column;gap:8px"></div>
           </div>
 
           <div class="if-actions" style="margin-top:16px">
@@ -2305,7 +2314,7 @@ function populateTeamLeadDropdown(teamId, selectedLeadId) {
   }
   staffList.forEach(function(s) {
     var opt = document.createElement('option');
-    var uid = s.adminUserId || s.id;
+    var uid = s.adminUserId || s.admin_user_id || s.id;
     opt.value = uid;
     opt.textContent = escHtml(s.name) + ' (' + escHtml(s.email) + ')';
     if (selectedLeadId && String(uid) === String(selectedLeadId)) opt.selected = true;
@@ -2472,7 +2481,7 @@ window.editTeam = function(teamId) {
   teamSubmitBtn.textContent = 'Update Team';
   teamNameInput.value = team.name || '';
   teamSlugInput.value = team.slug || '';
-  populateTeamLeadDropdown(teamId, team.leadId);
+  populateTeamLeadDropdown(teamId, team.leadId || team.lead_id);
   addTeamForm.classList.add('open');
   addTeamForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
 };
@@ -3004,6 +3013,7 @@ function renderMeetingTypes() {
             ${mt.durationMinutes || mt.duration_minutes} min
           </span>
           ${(mt.bufferMinutes || mt.buffer_minutes) ? '<span style="font-size:11px;color:var(--text-light);margin-left:4px">+' + (mt.bufferMinutes || mt.buffer_minutes) + ' min buffer</span>' : ''}
+          ${(function(){ var adv = mt.minAdvanceMinutes != null ? mt.minAdvanceMinutes : (mt.min_advance_minutes != null ? mt.min_advance_minutes : 60); return adv ? '<span style="font-size:11px;color:var(--text-light);margin-left:4px">' + (adv / 60) + 'h advance</span>' : ''; })()}
         </td>
         <td><div class="mt-plan-tags">${planTags}</div></td>
         <td><div class="mt-days-pills">${dayPills}</div></td>
@@ -3076,6 +3086,7 @@ addMtypeBtn.addEventListener('click', function() {
   document.getElementById('mt-duration').value = '120';
   document.getElementById('mt-buffer').value = '0';
   document.getElementById('mt-max-daily').value = '0';
+  document.getElementById('mt-min-advance').value = '1';
   setMtActive(true);
   // Reset plan chips
   document.querySelectorAll('#mt-plans .mt-chip').forEach(chip => {
@@ -3090,6 +3101,8 @@ addMtypeBtn.addEventListener('click', function() {
     cb.checked = isOn;
     chip.classList.toggle('on', isOn);
   });
+  document.getElementById('mt-weights-section').style.display = 'none';
+  document.getElementById('mt-weights-list').innerHTML = '';
   mtypeForm.classList.add('open');
 });
 
@@ -3108,6 +3121,7 @@ window.editMtype = function(id) {
   document.getElementById('mt-duration').value = mt.durationMinutes || mt.duration_minutes || 120;
   document.getElementById('mt-buffer').value = mt.bufferMinutes != null ? mt.bufferMinutes : (mt.buffer_minutes != null ? mt.buffer_minutes : 0);
   document.getElementById('mt-max-daily').value = mt.maxDailyMeetings != null ? mt.maxDailyMeetings : (mt.max_daily_meetings != null ? mt.max_daily_meetings : 0);
+  document.getElementById('mt-min-advance').value = (mt.minAdvanceMinutes || mt.min_advance_minutes || 60) / 60;
   setMtActive(mt.isActive !== false);
   // Plan chips
   var plans = mt.plans || [];
@@ -3125,8 +3139,35 @@ window.editMtype = function(id) {
     cb.checked = isOn;
     chip.classList.toggle('on', isOn);
   });
+  // Load staff weights for this meeting type
+  loadMtWeights(id);
   mtypeForm.classList.add('open');
 };
+
+async function loadMtWeights(meetingTypeId) {
+  var section = document.getElementById('mt-weights-section');
+  var list = document.getElementById('mt-weights-list');
+  list.innerHTML = '<div style="text-align:center;padding:8px"><div class="spinner spinner-dark" style="width:18px;height:18px"></div></div>';
+  section.style.display = '';
+  try {
+    var staffWeights = await apiFetch('/api/admin/meeting-types/' + meetingTypeId + '/weights');
+    if (!staffWeights || staffWeights.length === 0) {
+      list.innerHTML = '<span style="font-size:12px;color:var(--text-light)">No active staff members</span>';
+      return;
+    }
+    list.innerHTML = staffWeights.map(function(sw) {
+      var name = escHtml(sw.name || sw.email);
+      var weight = sw.weight != null ? sw.weight : (sw.meetingPct || 0);
+      return '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="flex:1;font-size:13px">' + name + '</span>' +
+        '<input type="number" class="if-input mt-weight-input" data-staff-id="' + sw.id + '" value="' + weight + '" min="0" max="100" style="width:64px;text-align:center">' +
+        '<span style="font-size:12px;color:var(--text-light)">%</span>' +
+        '</div>';
+    }).join('');
+  } catch (err) {
+    list.innerHTML = '<span style="font-size:12px;color:var(--text-light)">Failed to load weights</span>';
+  }
+}
 
 mtypeSubmitBtn.addEventListener('click', async function() {
   var name = document.getElementById('mt-name').value.trim();
@@ -3134,6 +3175,7 @@ mtypeSubmitBtn.addEventListener('click', async function() {
   var duration = parseInt(document.getElementById('mt-duration').value) || 120;
   var buffer = parseInt(document.getElementById('mt-buffer').value) || 0;
   var maxDaily = parseInt(document.getElementById('mt-max-daily').value) || 0;
+  var minAdvance = parseFloat(document.getElementById('mt-min-advance').value) * 60 || 60;
   var isActive = document.getElementById('mt-active-toggle').classList.contains('on');
 
   if (!name || !label) {
@@ -3154,7 +3196,7 @@ mtypeSubmitBtn.addEventListener('click', async function() {
     if (editingMtypeId) {
       await apiFetch('/api/admin/meeting-types/' + editingMtypeId, {
         method: 'PUT',
-        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, buffer_minutes: buffer, max_daily_meetings: maxDaily, is_active: isActive })
+        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, buffer_minutes: buffer, min_advance_minutes: minAdvance, max_daily_meetings: maxDaily, is_active: isActive })
       });
       await apiFetch('/api/admin/meeting-types/' + editingMtypeId + '/plans', {
         method: 'PUT',
@@ -3164,11 +3206,23 @@ mtypeSubmitBtn.addEventListener('click', async function() {
         method: 'PUT',
         body: JSON.stringify({ days: days })
       });
+      // Save staff weights if section is visible
+      var weightInputs = document.querySelectorAll('#mt-weights-list .mt-weight-input');
+      if (weightInputs.length > 0) {
+        var weights = [];
+        weightInputs.forEach(function(inp) {
+          weights.push({ staff_member_id: parseInt(inp.dataset.staffId), weight: parseInt(inp.value) || 0 });
+        });
+        await apiFetch('/api/admin/meeting-types/' + editingMtypeId + '/weights', {
+          method: 'PUT',
+          body: JSON.stringify({ weights: weights })
+        });
+      }
       showToast('Meeting type updated');
     } else {
       var created = await apiFetch('/api/admin/meeting-types', {
         method: 'POST',
-        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, buffer_minutes: buffer, max_daily_meetings: maxDaily, is_active: isActive })
+        body: JSON.stringify({ name: name, label: label, duration_minutes: duration, buffer_minutes: buffer, min_advance_minutes: minAdvance, max_daily_meetings: maxDaily, is_active: isActive })
       });
       var newId = created.id;
       await apiFetch('/api/admin/meeting-types/' + newId + '/plans', {
