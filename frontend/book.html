@@ -379,6 +379,7 @@ body{
   S.preType = params.get('type');
   S.staffId = params.get('staff_id') || null;
   S.teamSlug = params.get('team') || null;
+  S.lang = params.get('lang') || 'en';
   S.prefill = {
     name: params.get('name') || '',
     email: params.get('email') || '',
@@ -749,6 +750,7 @@ body{
       meeting_type_id: S.meetingType ? S.meetingType.id : null,
       staff_member_id: S.staffId || undefined,
       team: S.teamSlug || undefined,
+      lang: S.lang || 'en',
       addons: []
     };
 

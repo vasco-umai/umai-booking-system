@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#EFF3F6;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;">
+  <div style="max-width:520px;margin:0 auto;padding:40px 20px;">
+    <div style="background:#fff;border-radius:12px;padding:40px 32px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+      <!-- Logo/Header -->
+      <div style="text-align:center;margin-bottom:32px;">
+        <div style="width:64px;height:64px;border-radius:50%;background:rgba(43,188,179,0.15);display:inline-block;line-height:64px;text-align:center;">
+          <span style="font-family:'DM Sans',-apple-system,sans-serif;font-size:22px;font-weight:700;color:#ffffff;letter-spacing:1px;">UMAI</span>
+        </div>
+      </div>
+
+      <h1 style="font-size:22px;font-weight:700;color:#2D2D3A;text-align:center;margin:0 0 8px;">Sess&atilde;o de Forma&ccedil;&atilde;o Confirmada</h1>
+      <p style="font-size:14px;color:#71717A;text-align:center;margin:0 0 32px;">A sua sess&atilde;o de onboarding UMAI est&aacute; confirmada!</p>
+
+      <p style="font-size:14px;color:#2D2D3A;margin:0 0 24px;">Ol&aacute; <strong>{{guestName}}</strong>,</p>
+      <p style="font-size:14px;color:#2D2D3A;line-height:1.6;margin:0 0 24px;">
+        Confirm&aacute;mos a sua sess&atilde;o de forma&ccedil;&atilde;o para <strong>{{venueName}}</strong>. Aqui est&atilde;o os detalhes:
+      </p>
+
+      <!-- Details card -->
+      <div style="background:#F5F7F9;border-radius:8px;padding:20px;margin-bottom:24px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="padding:6px 0;font-size:13px;color:#71717A;width:80px;">Data</td>
+            <td style="padding:6px 0;font-size:14px;font-weight:600;color:#2D2D3A;">{{date}}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;font-size:13px;color:#71717A;">Hora</td>
+            <td style="padding:6px 0;font-size:14px;font-weight:600;color:#2D2D3A;">{{time}}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;font-size:13px;color:#71717A;">Fuso hor&aacute;rio</td>
+            <td style="padding:6px 0;font-size:14px;color:#2D2D3A;">{{timezone}}</td>
+          </tr>
+        </table>
+      </div>
+
+      {{meetingLinkBlock}}
+
+      <p style="font-size:14px;color:#2D2D3A;line-height:1.6;margin:0 0 8px;">
+        Nesta sess&atilde;o, vamos gui&aacute;-lo por tudo o que precisa para tirar o m&aacute;ximo partido dos servi&ccedil;os da UMAI.
+      </p>
+      <p style="font-size:14px;color:#2D2D3A;line-height:1.6;margin:0 0 32px;">
+        Vai receber um convite de calend&aacute;rio em breve. Se precisar de reagendar, entre em contacto connosco.
+      </p>
+
+      <p style="font-size:14px;color:#71717A;margin:0;">&mdash; A Equipa UMAI</p>
+    </div>
+
+    <p style="text-align:center;font-size:12px;color:#A1A1AA;margin-top:24px;">
+      &copy; 2024 UMAI. Todos os direitos reservados.
+    </p>
+  </div>
+</body>
+</html>

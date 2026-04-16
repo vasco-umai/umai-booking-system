@@ -1180,6 +1180,17 @@ tbody tr:hover{background:var(--card)}
 <div class="overlay" id="linksOverlay" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="dialog" style="text-align:left;max-width:480px;max-height:80vh;overflow-y:auto">
     <h3 id="linksTitle" style="margin-bottom:16px">Booking Links</h3>
+    <div style="margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+      <label style="font-size:13px;font-weight:600;color:#2D2D3A;">Language:</label>
+      <select id="linksLang" style="padding:6px 12px;border:1px solid #e0e0e0;border-radius:6px;font-size:13px;">
+        <option value="en">English</option>
+        <option value="pt">Portuguese</option>
+        <option value="es">Spanish</option>
+        <option value="fr">French</option>
+        <option value="de">German</option>
+        <option value="da">Danish</option>
+      </select>
+    </div>
     <div id="linksBody"></div>
     <div style="text-align:right;margin-top:20px">
       <button class="btn-sm btn-sm-outline" onclick="document.getElementById('linksOverlay').classList.remove('open')">Close</button>
@@ -2497,12 +2508,20 @@ window.showTeamBookingLinks = function(slug, teamName) {
   window._linkIdx = 0;
   var base = window.location.origin + '/book.html';
   var teamParam = '&team=' + encodeURIComponent(slug);
+  var lang = document.getElementById('linksLang') ? document.getElementById('linksLang').value : 'en';
+  var langParam = '&lang=' + lang;
   body.innerHTML =
-    window._linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + teamParam) +
-    window._linkRow('Online only', base + '?plan=essencial&type=online' + teamParam) +
-    window._linkRow('In-Person only', base + '?plan=essencial&type=in_person' + teamParam) +
-    window._linkRow('Freemium only', base + '?plan=mini&type=Freemium' + teamParam);
+    window._linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + teamParam + langParam) +
+    window._linkRow('Online only', base + '?plan=essencial&type=online' + teamParam + langParam) +
+    window._linkRow('In-Person only', base + '?plan=essencial&type=in_person' + teamParam + langParam) +
+    window._linkRow('Freemium only', base + '?plan=mini&type=Freemium' + teamParam + langParam);
   document.getElementById('linksOverlay').classList.add('open');
+  var langSelect = document.getElementById('linksLang');
+  if (langSelect) {
+    langSelect.onchange = function() {
+      window.showTeamBookingLinks(slug, teamName);
+    };
+  }
 };
 
 window.editTeam = function(teamId) {
@@ -3079,11 +3098,13 @@ window._linkRow = function(label, url) {
 window._linksBlock = function(suffix) {
   var base = window.location.origin + '/book.html';
   var s = suffix || '';
+  var lang = document.getElementById('linksLang') ? document.getElementById('linksLang').value : 'en';
+  var langParam = '&lang=' + lang;
   var teamParam = selectedTeamSlug ? '&team=' + encodeURIComponent(selectedTeamSlug) : '';
-  return window._linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + teamParam + s) +
-         window._linkRow('Online only', base + '?plan=essencial&type=online' + teamParam + s) +
-         window._linkRow('In-Person only', base + '?plan=essencial&type=in_person' + teamParam + s) +
-         window._linkRow('Freemium only', base + '?plan=mini&type=Freemium' + teamParam + s);
+  return window._linkRow('Choice (Online / In-Person)', base + '?plan=essencial' + teamParam + langParam + s) +
+         window._linkRow('Online only', base + '?plan=essencial&type=online' + teamParam + langParam + s) +
+         window._linkRow('In-Person only', base + '?plan=essencial&type=in_person' + teamParam + langParam + s) +
+         window._linkRow('Freemium only', base + '?plan=mini&type=Freemium' + teamParam + langParam + s);
 };
 
 window.showAllBookingLinks = function() {
@@ -3092,6 +3113,13 @@ window.showAllBookingLinks = function() {
   window._linkIdx = 0;
   body.innerHTML = window._linksBlock();
   document.getElementById('linksOverlay').classList.add('open');
+  var langSelect = document.getElementById('linksLang');
+  if (langSelect) {
+    langSelect.onchange = function() {
+      window._linkIdx = 0;
+      body.innerHTML = window._linksBlock();
+    };
+  }
 };
 
 window.showStaffLinks = function(staffId, staffName) {
@@ -3100,6 +3128,13 @@ window.showStaffLinks = function(staffId, staffName) {
   window._linkIdx = 0;
   body.innerHTML = window._linksBlock('&staff_id=' + staffId);
   document.getElementById('linksOverlay').classList.add('open');
+  var langSelect = document.getElementById('linksLang');
+  if (langSelect) {
+    langSelect.onchange = function() {
+      window._linkIdx = 0;
+      body.innerHTML = window._linksBlock('&staff_id=' + staffId);
+    };
+  }
 };
 
 window.copyLinkUrl = function(url) {

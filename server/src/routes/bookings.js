@@ -16,7 +16,7 @@ router.post('/', async (req, res, next) => {
   const client = await pool.connect();
 
   try {
-    let { guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, plan, meeting_type_id, addons, staff_member_id, team } = req.body;
+    let { guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, plan, meeting_type_id, addons, staff_member_id, team, lang } = req.body;
 
     // Sanitize string inputs to prevent XSS in emails/calendar events
     guest_name = stripHtml(guest_name);
@@ -122,10 +122,10 @@ router.post('/', async (req, res, next) => {
 
     // Insert the booking (team-scoped)
     const { rows } = await client.query(
-      `INSERT INTO bookings (guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, staff_member_id, plan, meeting_type_id, team_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO bookings (guest_name, guest_email, guest_phone, venue_name, venue_address, company, slot_start, slot_end, guest_tz, staff_member_id, plan, meeting_type_id, team_id, lang)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
-      [guest_name, guest_email, guest_phone || null, venue_name || null, venue_address || null, company || null, slot_start, slot_end, guest_tz || 'UTC', assignedStaff ? assignedStaff.id : null, plan || null, meeting_type_id || null, teamId]
+      [guest_name, guest_email, guest_phone || null, venue_name || null, venue_address || null, company || null, slot_start, slot_end, guest_tz || 'UTC', assignedStaff ? assignedStaff.id : null, plan || null, meeting_type_id || null, teamId, lang || null]
     );
 
     await client.query('COMMIT');
@@ -193,6 +193,7 @@ router.post('/', async (req, res, next) => {
         venueName: venue_name,
         replyTo: assignedStaff?.email || undefined,
         meetingLink,
+        lang,
       });
       await pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, booking.id]);
     } catch (err) {

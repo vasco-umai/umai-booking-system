@@ -509,6 +509,7 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
         slotStart: booking.slot_start.toISOString(),
         guestTz: booking.guest_tz,
         replyTo: staffEmail || undefined,
+        lang: booking.lang,
       });
     } catch (err) {
       logger.error({ err, bookingId: id }, 'Failed to send cancellation email');
@@ -619,6 +620,7 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
         meetingTypeLabel: booking.meeting_type_label || 'Training',
         meetingLink: hangoutLink || booking.meeting_link || null,
         replyTo: newStaff.email || undefined,
+        lang: booking.lang,
       });
     }).catch(err => {
       logger.error({ err, bookingId: id }, 'Calendar or update email failed during reassignment');
@@ -634,6 +636,7 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
         meetingTypeLabel: booking.meeting_type_label || 'Training',
         meetingLink: null,
         replyTo: newStaff.email || undefined,
+        lang: booking.lang,
       }).catch(() => {});
     });
 
@@ -672,6 +675,7 @@ router.post('/bookings/:id/resend-confirmation', async (req, res, next) => {
       venueName: booking.venue_name,
       replyTo: booking.staff_email || undefined,
       meetingLink: booking.meeting_link || null,
+      lang: booking.lang,
     });
 
     await pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, id]);
