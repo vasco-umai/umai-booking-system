@@ -33,24 +33,27 @@ async function getAllStaff(teamId) {
  * @returns {Array<object>}
  */
 async function getActiveStaffWithCalendar(teamId) {
+  // Include staff with meeting_pct > 0 OR any per-meeting-type weight > 0
   if (teamId) {
     const { rows } = await pool.query(
-      `SELECT * FROM staff_members
-       WHERE is_active = true
-         AND google_refresh_token IS NOT NULL
-         AND meeting_pct > 0
-         AND team_id = $1
-       ORDER BY name`,
+      `SELECT DISTINCT sm.* FROM staff_members sm
+       LEFT JOIN staff_meeting_weights smw ON smw.staff_member_id = sm.id AND smw.weight > 0
+       WHERE sm.is_active = true
+         AND sm.google_refresh_token IS NOT NULL
+         AND (sm.meeting_pct > 0 OR smw.id IS NOT NULL)
+         AND sm.team_id = $1
+       ORDER BY sm.name`,
       [teamId]
     );
     return rows;
   }
   const { rows } = await pool.query(
-    `SELECT * FROM staff_members
-     WHERE is_active = true
-       AND google_refresh_token IS NOT NULL
-       AND meeting_pct > 0
-     ORDER BY name`
+    `SELECT DISTINCT sm.* FROM staff_members sm
+     LEFT JOIN staff_meeting_weights smw ON smw.staff_member_id = sm.id AND smw.weight > 0
+     WHERE sm.is_active = true
+       AND sm.google_refresh_token IS NOT NULL
+       AND (sm.meeting_pct > 0 OR smw.id IS NOT NULL)
+     ORDER BY sm.name`
   );
   return rows;
 }

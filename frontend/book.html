@@ -48,11 +48,34 @@ body{
   -webkit-font-smoothing:antialiased;
 }
 
-/* Logo */
-.logo{margin-bottom:32px;display:flex;align-items:center;justify-content:center}
+/* Logo + header */
+.hdr{width:100%;max-width:520px;display:flex;align-items:center;justify-content:center;margin-bottom:32px;position:relative}
+.logo{display:flex;align-items:center;justify-content:center}
 .logo img{height:32px}
 .logo-text{font-size:22px;font-weight:700;color:var(--text)}
 .logo-text span{color:var(--teal)}
+
+/* Language selector */
+.lang-sel{
+  position:absolute;right:0;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;gap:4px;
+  background:var(--white);border:1px solid var(--border-lt);border-radius:var(--r-pill);
+  padding:4px 10px 4px 8px;cursor:pointer;
+  font-size:12px;font-weight:500;color:var(--text-mid);
+  transition:var(--tr);
+}
+.lang-sel:hover{border-color:var(--teal);color:var(--text)}
+.lang-sel select{
+  appearance:none;-webkit-appearance:none;
+  background:none;border:none;outline:none;
+  font-family:inherit;font-size:12px;font-weight:500;color:inherit;
+  cursor:pointer;padding-right:12px;
+}
+.lang-sel::after{
+  content:'';display:block;
+  width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:4px solid currentColor;
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;
+}
 
 /* Card */
 .card{
@@ -237,9 +260,21 @@ body{
 </head>
 <body>
 
-<div class="logo">
-  <img src="sources/green-logo.png" alt="UMAI" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
-  <div class="logo-text" style="display:none">UMAI <span>Meetings</span></div>
+<div class="hdr">
+  <div class="logo">
+    <img src="sources/green-logo.png" alt="UMAI" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+    <div class="logo-text" style="display:none">UMAI <span>Meetings</span></div>
+  </div>
+  <label class="lang-sel">
+    <select id="langSelect">
+      <option value="en">EN</option>
+      <option value="pt">PT</option>
+      <option value="es">ES</option>
+      <option value="fr">FR</option>
+      <option value="de">DE</option>
+      <option value="da">DA</option>
+    </select>
+  </label>
 </div>
 
 <div class="card">
@@ -380,6 +415,16 @@ body{
   S.staffId = params.get('staff_id') || null;
   S.teamSlug = params.get('team') || null;
   S.lang = params.get('lang') || 'en';
+
+  // -- Language selector --
+  var langSelect = document.getElementById('langSelect');
+  langSelect.value = S.lang;
+  document.documentElement.lang = S.lang;
+  langSelect.addEventListener('change', function() {
+    S.lang = langSelect.value;
+    document.documentElement.lang = S.lang;
+  });
+
   S.prefill = {
     name: params.get('name') || '',
     email: params.get('email') || '',
