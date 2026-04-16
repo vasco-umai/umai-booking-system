@@ -58,23 +58,28 @@ body{
 /* Language selector */
 .lang-sel{
   position:absolute;right:0;top:50%;transform:translateY(-50%);
-  display:flex;align-items:center;gap:4px;
-  background:var(--white);border:1px solid var(--border-lt);border-radius:var(--r-pill);
-  padding:4px 10px 4px 8px;cursor:pointer;
-  font-size:12px;font-weight:500;color:var(--text-mid);
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 16px 6px 8px;
+  cursor:pointer;
+  font-size:11px;font-weight:600;letter-spacing:0.06em;
+  color:var(--text-light);
+  border-radius:var(--r-sm);
   transition:var(--tr);
 }
-.lang-sel:hover{border-color:var(--teal);color:var(--text)}
+.lang-sel:hover{color:var(--teal);background:rgba(43,188,179,0.08)}
+.lang-sel svg{width:14px;height:14px;flex-shrink:0;opacity:0.85}
 .lang-sel select{
   appearance:none;-webkit-appearance:none;
   background:none;border:none;outline:none;
-  font-family:inherit;font-size:12px;font-weight:500;color:inherit;
-  cursor:pointer;padding-right:12px;
+  font-family:inherit;font-size:inherit;font-weight:inherit;letter-spacing:inherit;color:inherit;
+  cursor:pointer;padding:0;text-transform:uppercase;
 }
 .lang-sel::after{
   content:'';display:block;
-  width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:4px solid currentColor;
-  position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;
+  width:0;height:0;
+  border-left:3px solid transparent;border-right:3px solid transparent;border-top:3px solid currentColor;
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  pointer-events:none;opacity:0.5;
 }
 
 /* Card */
@@ -265,7 +270,8 @@ body{
     <img src="sources/green-logo.png" alt="UMAI" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
     <div class="logo-text" style="display:none">UMAI <span>Meetings</span></div>
   </div>
-  <label class="lang-sel">
+  <label class="lang-sel" aria-label="Language">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
     <select id="langSelect">
       <option value="en">EN</option>
       <option value="pt">PT</option>
