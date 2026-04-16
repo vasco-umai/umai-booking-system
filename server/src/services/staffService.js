@@ -412,23 +412,36 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0, maxDail
     });
   }
 
-  // 7. Weighted random selection
-  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  logger.info({ weights: underLimitStaff.map((s, i) => `${s.name}=${weights[i].toFixed(2)}`), totalWeight: totalWeight.toFixed(2) }, '[ASSIGN] Weights');
+  // 7. Priority-based selection: highest weight first, overflow to lower when saturated
+  //    Sort by weight descending. Pick the staff member who is most "under-quota".
+  //    Under-quota = expected share - actual share (bigger = more deserving of next booking).
+  logger.info({ weights: underLimitStaff.map((s, i) => `${s.name}=${weights[i].toFixed(2)}`), totalPct }, '[ASSIGN] Weights');
   logger.info({ bookings: underLimitStaff.map(s => `${s.name}=${bookingCounts[s.id]}`), totalBookings }, '[ASSIGN] Bookings (30d)');
 
-  let rand = Math.random() * totalWeight;
+  // Calculate how far each staff is from their target share
+  const staffWithGap = underLimitStaff.map((s, i) => {
+    const pct = getWeight(s);
+    const expectedShare = totalBookings > 0 ? (pct / totalPct) : (pct / 100);
+    const actualShare = totalBookings > 0 ? (bookingCounts[s.id] / totalBookings) : 0;
+    const gap = expectedShare - actualShare; // positive = under-quota, negative = over-quota
+    return { staff: s, weight: pct, gap, bookings: bookingCounts[s.id] };
+  });
 
-  for (let i = 0; i < underLimitStaff.length; i++) {
-    rand -= weights[i];
-    if (rand <= 0) {
-      logger.info({ selected: underLimitStaff[i].name, id: underLimitStaff[i].id }, '[ASSIGN] Selected');
-      return underLimitStaff[i];
-    }
-  }
+  // Sort: highest weight first, then by biggest gap (most under-quota)
+  staffWithGap.sort((a, b) => {
+    // Primary: pick whoever is most under their quota
+    if (Math.abs(a.gap - b.gap) > 0.01) return b.gap - a.gap;
+    // Tiebreaker: higher weight wins
+    return b.weight - a.weight;
+  });
 
-  logger.info({ selected: underLimitStaff[underLimitStaff.length - 1].name }, '[ASSIGN] Fallback selected');
-  return underLimitStaff[underLimitStaff.length - 1];
+  const selected = staffWithGap[0].staff;
+  logger.info({
+    selected: selected.name,
+    id: selected.id,
+    ranking: staffWithGap.map(s => `${s.staff.name}(w:${s.weight},gap:${s.gap.toFixed(3)},b:${s.bookings})`)
+  }, '[ASSIGN] Priority selected');
+  return selected;
 }
 
 /**
