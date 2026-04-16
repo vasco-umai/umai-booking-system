@@ -286,7 +286,7 @@ body{
 <div class="card">
   <!-- Loading -->
   <div id="viewLoading" class="view active">
-    <div class="sec-title">Loading...</div>
+    <div class="sec-title" data-t="loading">Loading...</div>
     <div class="spinner"></div>
   </div>
 
@@ -294,18 +294,18 @@ body{
   <div id="viewError" class="view">
     <div class="error-wrap">
       <div class="error-icon">!</div>
-      <div class="error-title">Invalid Link</div>
-      <div class="error-desc">This booking link is missing required information.<br>Please check the link and try again.</div>
+      <div class="error-title" data-t="invalidLink">Invalid Link</div>
+      <div class="error-desc" data-t-html="errorDesc">This booking link is missing required information.<br>Please check the link and try again.</div>
     </div>
   </div>
 
   <!-- Step 1: Meeting Type -->
   <div id="viewMtype" class="view">
     <div class="steps"><div class="step-dot active"></div><div class="step-dot"></div><div class="step-dot"></div></div>
-    <div class="sec-title">Choose Meeting Type</div>
-    <div class="sec-desc">How would you like to meet?</div>
+    <div class="sec-title" data-t="chooseMtype">Choose Meeting Type</div>
+    <div class="sec-desc" data-t="howMeet">How would you like to meet?</div>
     <div id="mtypeGrid" class="mtype-grid"></div>
-    <button id="btnMtype" class="btn" disabled onclick="confirmMtype()">Continue</button>
+    <button id="btnMtype" class="btn" disabled onclick="confirmMtype()" data-t="continue">Continue</button>
   </div>
 
   <!-- Step 2: Date & Time -->
@@ -313,9 +313,9 @@ body{
     <div class="steps"><div class="step-dot done"></div><div class="step-dot active"></div><div class="step-dot"></div></div>
     <button class="btn-back" onclick="goBack('datetime')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-      Back
+      <span data-t="back">Back</span>
     </button>
-    <div class="sec-title">Pick a Date & Time</div>
+    <div class="sec-title" data-t="pickDatetime">Pick a Date & Time</div>
     <div id="mtypeLabel" class="sec-desc"></div>
     <div class="cal-hd">
       <div class="cal-dt" onclick="toggleCal()">
@@ -333,7 +333,7 @@ body{
     </div>
     <div id="tzNote" class="tz-note"></div>
     <div id="timeG" class="time-g"></div>
-    <button id="btnDatetime" class="btn" disabled onclick="goToInfo()">Continue</button>
+    <button id="btnDatetime" class="btn" disabled onclick="goToInfo()" data-t="continue">Continue</button>
   </div>
 
   <!-- Step 3: Guest Info -->
@@ -341,40 +341,40 @@ body{
     <div class="steps"><div class="step-dot done"></div><div class="step-dot done"></div><div class="step-dot active"></div></div>
     <button class="btn-back" onclick="goBack('info')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-      Back
+      <span data-t="back">Back</span>
     </button>
-    <div class="sec-title">Your Details</div>
+    <div class="sec-title" data-t="yourDetails">Your Details</div>
     <div id="infoSlotSummary" class="sec-desc"></div>
     <form id="guestForm" onsubmit="submitBooking(event)">
       <div class="form-row">
         <div class="form-group">
-          <label for="gName">Name *</label>
-          <input type="text" id="gName" placeholder="Full name" required>
+          <label for="gName" data-t="labelName">Name *</label>
+          <input type="text" id="gName" placeholder="Full name" data-tp="phName" required>
         </div>
         <div class="form-group">
-          <label for="gEmail">Email *</label>
+          <label for="gEmail" data-t="labelEmail">Email *</label>
           <input type="email" id="gEmail" placeholder="you@company.com" required>
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label for="gPhone">Phone</label>
+          <label for="gPhone" data-t="labelPhone">Phone</label>
           <input type="tel" id="gPhone" placeholder="+351 ...">
         </div>
         <div class="form-group">
-          <label for="gCompany">Company</label>
-          <input type="text" id="gCompany" placeholder="Company name">
+          <label for="gCompany" data-t="labelCompany">Company</label>
+          <input type="text" id="gCompany" placeholder="Company name" data-tp="phCompany">
         </div>
       </div>
       <div class="form-group">
-        <label for="gVenue">Venue / Restaurant Name</label>
-        <input type="text" id="gVenue" placeholder="Restaurant name">
+        <label for="gVenue" data-t="labelVenue">Venue / Restaurant Name</label>
+        <input type="text" id="gVenue" placeholder="Restaurant name" data-tp="phVenue">
       </div>
       <div class="form-group" id="addressGroup">
-        <label for="gAddress">Venue Address</label>
-        <input type="text" id="gAddress" placeholder="Street, City">
+        <label for="gAddress" data-t="labelAddress">Venue Address</label>
+        <input type="text" id="gAddress" placeholder="Street, City" data-tp="phAddress">
       </div>
-      <button type="submit" id="btnBook" class="btn" style="margin-top:8px">Book Meeting</button>
+      <button type="submit" id="btnBook" class="btn" style="margin-top:8px" data-t="bookMeeting">Book Meeting</button>
     </form>
   </div>
 
@@ -384,9 +384,9 @@ body{
       <div class="done-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
-      <div class="done-title">Meeting Booked!</div>
+      <div class="done-title" data-t="meetingBooked">Meeting Booked!</div>
       <div id="doneDetails" class="done-detail"></div>
-      <div class="done-detail" style="margin-top:16px;font-size:13px">You'll receive a confirmation email shortly.</div>
+      <div class="done-detail" style="margin-top:16px;font-size:13px" data-t="confirmEmail">You'll receive a confirmation email shortly.</div>
     </div>
   </div>
 </div>
@@ -401,6 +401,148 @@ body{
   var API_BASE = window.UMAI_BOOKING_API_BASE || window.location.origin;
   var USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Lisbon';
 
+  // -- Translations --
+  var T = {
+    en: {
+      loading:'Loading...', invalidLink:'Invalid Link',
+      errorDesc:'This booking link is missing required information.<br>Please check the link and try again.',
+      chooseMtype:'Choose Meeting Type', howMeet:'How would you like to meet?',
+      continue:'Continue', back:'Back', pickDatetime:'Pick a Date & Time',
+      yourDetails:'Your Details',
+      labelName:'Name *', labelEmail:'Email *', labelPhone:'Phone',
+      labelCompany:'Company', labelVenue:'Venue / Restaurant Name', labelAddress:'Venue Address',
+      phName:'Full name', phCompany:'Company name', phVenue:'Restaurant name', phAddress:'Street, City',
+      bookMeeting:'Book Meeting', meetingBooked:'Meeting Booked!',
+      confirmEmail:"You'll receive a confirmation email shortly.",
+      findingDates:'Finding available dates...', loadingTimes:'Loading available times...',
+      timesShownIn:'Times shown in', noTimes:'No available times on this date',
+      couldNotLoad:'Could not load available times', tryAgain:'Try again',
+      slotTaken:'That slot was just taken! Please pick another.',
+      booking:'Booking...', bookingFailed:'Booking failed. Please try again.',
+      meeting:'Meeting', at:'at', forVenue:'for', withStaff:'with',
+      min:'min',
+      months:['January','February','March','April','May','June','July','August','September','October','November','December'],
+      monthsShort:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+      daysShort:['Su','Mo','Tu','We','Th','Fr','Sa'],
+      daysMed:['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+    },
+    pt: {
+      loading:'A carregar...', invalidLink:'Link Inválido',
+      errorDesc:'Este link de marcação está em falta informação necessária.<br>Por favor verifique o link e tente novamente.',
+      chooseMtype:'Escolha o Tipo de Reunião', howMeet:'Como prefere reunir?',
+      continue:'Continuar', back:'Voltar', pickDatetime:'Escolha Data & Hora',
+      yourDetails:'Os Seus Dados',
+      labelName:'Nome *', labelEmail:'Email *', labelPhone:'Telefone',
+      labelCompany:'Empresa', labelVenue:'Restaurante', labelAddress:'Morada do Restaurante',
+      phName:'Nome completo', phCompany:'Nome da empresa', phVenue:'Nome do restaurante', phAddress:'Rua, Cidade',
+      bookMeeting:'Marcar Reunião', meetingBooked:'Reunião Marcada!',
+      confirmEmail:'Receberá um email de confirmação em breve.',
+      findingDates:'A procurar datas disponíveis...', loadingTimes:'A carregar horários...',
+      timesShownIn:'Horários no fuso', noTimes:'Sem horários disponíveis nesta data',
+      couldNotLoad:'Não foi possível carregar os horários', tryAgain:'Tentar novamente',
+      slotTaken:'Esse horário acabou de ser reservado! Escolha outro.',
+      booking:'A marcar...', bookingFailed:'Falha na marcação. Tente novamente.',
+      meeting:'Reunião', at:'às', forVenue:'para', withStaff:'com',
+      min:'min',
+      months:['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'],
+      monthsShort:['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'],
+      daysShort:['Do','Se','Te','Qu','Qu','Se','Sá'],
+      daysMed:['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+    },
+    es: {
+      loading:'Cargando...', invalidLink:'Enlace Inválido',
+      errorDesc:'A este enlace le falta información necesaria.<br>Por favor verifique el enlace e inténtelo de nuevo.',
+      chooseMtype:'Elige el Tipo de Reunión', howMeet:'¿Cómo prefieres reunirte?',
+      continue:'Continuar', back:'Atrás', pickDatetime:'Elige Fecha y Hora',
+      yourDetails:'Tus Datos',
+      labelName:'Nombre *', labelEmail:'Email *', labelPhone:'Teléfono',
+      labelCompany:'Empresa', labelVenue:'Restaurante', labelAddress:'Dirección del Restaurante',
+      phName:'Nombre completo', phCompany:'Nombre de la empresa', phVenue:'Nombre del restaurante', phAddress:'Calle, Ciudad',
+      bookMeeting:'Reservar Reunión', meetingBooked:'¡Reunión Reservada!',
+      confirmEmail:'Recibirás un email de confirmación en breve.',
+      findingDates:'Buscando fechas disponibles...', loadingTimes:'Cargando horarios...',
+      timesShownIn:'Horarios en', noTimes:'No hay horarios disponibles en esta fecha',
+      couldNotLoad:'No se pudieron cargar los horarios', tryAgain:'Intentar de nuevo',
+      slotTaken:'¡Ese horario acaba de ser reservado! Elige otro.',
+      booking:'Reservando...', bookingFailed:'Error en la reserva. Inténtalo de nuevo.',
+      meeting:'Reunión', at:'a las', forVenue:'para', withStaff:'con',
+      min:'min',
+      months:['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],
+      monthsShort:['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'],
+      daysShort:['Do','Lu','Ma','Mi','Ju','Vi','Sá'],
+      daysMed:['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+    },
+    fr: {
+      loading:'Chargement...', invalidLink:'Lien Invalide',
+      errorDesc:'Il manque des informations à ce lien de réservation.<br>Veuillez vérifier le lien et réessayer.',
+      chooseMtype:'Choisissez le Type de Réunion', howMeet:'Comment préférez-vous vous rencontrer?',
+      continue:'Continuer', back:'Retour', pickDatetime:'Choisissez la Date et l\u2019Heure',
+      yourDetails:'Vos Informations',
+      labelName:'Nom *', labelEmail:'Email *', labelPhone:'Téléphone',
+      labelCompany:'Entreprise', labelVenue:'Restaurant', labelAddress:'Adresse du Restaurant',
+      phName:'Nom complet', phCompany:'Nom de l\u2019entreprise', phVenue:'Nom du restaurant', phAddress:'Rue, Ville',
+      bookMeeting:'Réserver la Réunion', meetingBooked:'Réunion Réservée!',
+      confirmEmail:'Vous recevrez un email de confirmation sous peu.',
+      findingDates:'Recherche de dates disponibles...', loadingTimes:'Chargement des créneaux...',
+      timesShownIn:'Horaires en', noTimes:'Aucun créneau disponible à cette date',
+      couldNotLoad:'Impossible de charger les créneaux', tryAgain:'Réessayer',
+      slotTaken:'Ce créneau vient d\u2019être pris! Choisissez-en un autre.',
+      booking:'Réservation...', bookingFailed:'Échec de la réservation. Veuillez réessayer.',
+      meeting:'Réunion', at:'à', forVenue:'pour', withStaff:'avec',
+      min:'min',
+      months:['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'],
+      monthsShort:['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'],
+      daysShort:['Di','Lu','Ma','Me','Je','Ve','Sa'],
+      daysMed:['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']
+    },
+    de: {
+      loading:'Laden...', invalidLink:'Ungültiger Link',
+      errorDesc:'Diesem Buchungslink fehlen erforderliche Informationen.<br>Bitte überprüfen Sie den Link und versuchen Sie es erneut.',
+      chooseMtype:'Termintyp wählen', howMeet:'Wie möchten Sie sich treffen?',
+      continue:'Weiter', back:'Zurück', pickDatetime:'Datum & Uhrzeit wählen',
+      yourDetails:'Ihre Daten',
+      labelName:'Name *', labelEmail:'Email *', labelPhone:'Telefon',
+      labelCompany:'Firma', labelVenue:'Restaurant', labelAddress:'Adresse des Restaurants',
+      phName:'Vollständiger Name', phCompany:'Firmenname', phVenue:'Name des Restaurants', phAddress:'Straße, Stadt',
+      bookMeeting:'Termin Buchen', meetingBooked:'Termin Gebucht!',
+      confirmEmail:'Sie erhalten in Kürze eine Bestätigungs-E-Mail.',
+      findingDates:'Suche verfügbare Termine...', loadingTimes:'Lade verfügbare Zeiten...',
+      timesShownIn:'Zeiten angezeigt in', noTimes:'Keine Zeiten verfügbar an diesem Datum',
+      couldNotLoad:'Zeiten konnten nicht geladen werden', tryAgain:'Erneut versuchen',
+      slotTaken:'Dieser Termin wurde gerade vergeben! Bitte wählen Sie einen anderen.',
+      booking:'Buche...', bookingFailed:'Buchung fehlgeschlagen. Bitte versuchen Sie es erneut.',
+      meeting:'Termin', at:'um', forVenue:'für', withStaff:'mit',
+      min:'Min',
+      months:['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'],
+      monthsShort:['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'],
+      daysShort:['So','Mo','Di','Mi','Do','Fr','Sa'],
+      daysMed:['Son','Mon','Die','Mit','Don','Fre','Sam']
+    },
+    da: {
+      loading:'Indlæser...', invalidLink:'Ugyldigt Link',
+      errorDesc:'Dette bookinglink mangler nødvendig information.<br>Tjek venligst linket og prøv igen.',
+      chooseMtype:'Vælg Mødetype', howMeet:'Hvordan vil du gerne mødes?',
+      continue:'Fortsæt', back:'Tilbage', pickDatetime:'Vælg Dato & Tid',
+      yourDetails:'Dine Oplysninger',
+      labelName:'Navn *', labelEmail:'Email *', labelPhone:'Telefon',
+      labelCompany:'Virksomhed', labelVenue:'Restaurant', labelAddress:'Restaurantens Adresse',
+      phName:'Fulde navn', phCompany:'Virksomhedsnavn', phVenue:'Restaurantens navn', phAddress:'Gade, By',
+      bookMeeting:'Book Møde', meetingBooked:'Møde Booket!',
+      confirmEmail:'Du modtager en bekræftelsesmail om kort tid.',
+      findingDates:'Finder ledige datoer...', loadingTimes:'Indlæser ledige tider...',
+      timesShownIn:'Tider vist i', noTimes:'Ingen ledige tider på denne dato',
+      couldNotLoad:'Kunne ikke indlæse tider', tryAgain:'Prøv igen',
+      slotTaken:'Det tidspunkt blev lige booket! Vælg et andet.',
+      booking:'Booker...', bookingFailed:'Booking mislykkedes. Prøv igen.',
+      meeting:'Møde', at:'kl.', forVenue:'til', withStaff:'med',
+      min:'min',
+      months:['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'],
+      monthsShort:['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'],
+      daysShort:['Sø','Ma','Ti','On','To','Fr','Lø'],
+      daysMed:['Søn','Man','Tir','Ons','Tor','Fre','Lør']
+    }
+  };
+
   // -- State --
   var S = {
     plan: null,
@@ -409,7 +551,8 @@ body{
     meetingType: null,
     date: new Date(),
     slot: null,
-    prefill: {}
+    prefill: {},
+    lang: 'en'
   };
   var calView = { m: null, y: null };
   var monthAvailCache = {};
@@ -420,15 +563,38 @@ body{
   S.preType = params.get('type');
   S.staffId = params.get('staff_id') || null;
   S.teamSlug = params.get('team') || null;
-  S.lang = params.get('lang') || 'en';
+  S.lang = (params.get('lang') || 'en').toLowerCase();
+  if (!T[S.lang]) S.lang = 'en';
+
+  // -- Translation helpers --
+  function t(key) { return (T[S.lang] && T[S.lang][key]) || T.en[key] || key; }
+  function applyLang() {
+    document.documentElement.lang = S.lang;
+    document.querySelectorAll('[data-t]').forEach(function(el) {
+      var k = el.getAttribute('data-t');
+      if (T[S.lang] && T[S.lang][k] != null) el.textContent = T[S.lang][k];
+    });
+    document.querySelectorAll('[data-t-html]').forEach(function(el) {
+      var k = el.getAttribute('data-t-html');
+      if (T[S.lang] && T[S.lang][k] != null) el.innerHTML = T[S.lang][k];
+    });
+    document.querySelectorAll('[data-tp]').forEach(function(el) {
+      var k = el.getAttribute('data-tp');
+      if (T[S.lang] && T[S.lang][k] != null) el.setAttribute('placeholder', T[S.lang][k]);
+    });
+    // Re-render dynamic bits if they're already visible
+    if ($('calTxt') && $('calTxt').textContent) updateCalText();
+    if ($('calMo') && $('calMo').textContent && calView.m != null) $('calMo').textContent = T[S.lang].months[calView.m] + ' ' + calView.y;
+    if ($('tzNote') && $('tzNote').textContent) $('tzNote').textContent = t('timesShownIn') + ' ' + USER_TZ.replace(/_/g, ' ');
+    if ($('mtypeLabel') && S.meetingType) $('mtypeLabel').textContent = S.meetingType.label + ' - ' + S.meetingType.duration_minutes + ' ' + t('min');
+  }
 
   // -- Language selector --
   var langSelect = document.getElementById('langSelect');
   langSelect.value = S.lang;
-  document.documentElement.lang = S.lang;
   langSelect.addEventListener('change', function() {
     S.lang = langSelect.value;
-    document.documentElement.lang = S.lang;
+    applyLang();
   });
 
   S.prefill = {
@@ -447,17 +613,17 @@ body{
   }
 
   function showToast(msg, isError) {
-    var t = $('toast');
-    t.textContent = msg;
-    t.className = 'toast' + (isError ? ' error' : '') + ' show';
-    setTimeout(function() { t.classList.remove('show'); }, 3500);
+    var el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast' + (isError ? ' error' : '') + ' show';
+    setTimeout(function() { el.classList.remove('show'); }, 3500);
   }
 
-  // -- Month/day names --
-  var MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var DN = ['Su','Mo','Tu','We','Th','Fr','Sa'];
-  var MN_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  var DN_F = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  // -- Month/day names (locale-aware) --
+  function MN() { return T[S.lang].months; }
+  function DN() { return T[S.lang].daysShort; }
+  function MN_S() { return T[S.lang].monthsShort; }
+  function DN_F() { return T[S.lang].daysMed; }
 
   // -- Init --
   async function init() {
@@ -540,7 +706,7 @@ body{
 
       card.innerHTML = icon
         + '<div class="mtype-label">' + mt.label + '</div>'
-        + '<div class="mtype-duration">' + mt.duration_minutes + ' min</div>';
+        + '<div class="mtype-duration">' + mt.duration_minutes + ' ' + t('min') + '</div>';
 
       card.onclick = function() {
         document.querySelectorAll('.mtype-card').forEach(function(c) { c.classList.remove('selected'); });
@@ -566,7 +732,7 @@ body{
     $('btnDatetime').disabled = true;
 
     var label = S.meetingType
-      ? S.meetingType.label + ' - ' + S.meetingType.duration_minutes + ' min'
+      ? S.meetingType.label + ' - ' + S.meetingType.duration_minutes + ' ' + t('min')
       : '';
     $('mtypeLabel').textContent = label;
 
@@ -574,8 +740,8 @@ body{
 
     // Show loading while finding the next available date
     var g = $('timeG');
-    g.innerHTML = '<div class="ts-loading">Finding available dates...</div>';
-    $('calTxt').textContent = 'Loading...';
+    g.innerHTML = '<div class="ts-loading">' + t('findingDates') + '</div>';
+    $('calTxt').textContent = t('loading');
 
     var duration = S.meetingType ? S.meetingType.duration_minutes : 120;
     var todayStr = S.date.getFullYear() + '-' + String(S.date.getMonth() + 1).padStart(2, '0') + '-' + String(S.date.getDate()).padStart(2, '0');
@@ -599,17 +765,17 @@ body{
 
   function updateCalText() {
     var d = S.date;
-    $('calTxt').textContent = DN_F[d.getDay()] + ' ' + d.getDate() + ', ' + MN_S[d.getMonth()] + ', ' + d.getFullYear();
+    $('calTxt').textContent = DN_F()[d.getDay()] + ' ' + d.getDate() + ', ' + MN_S()[d.getMonth()] + ', ' + d.getFullYear();
   }
 
   async function loadSlots() {
     updateCalText();
     var g = $('timeG');
-    g.innerHTML = '<div class="ts-loading">Loading available times...</div>';
+    g.innerHTML = '<div class="ts-loading">' + t('loadingTimes') + '</div>';
     $('btnDatetime').disabled = true;
     S.slot = null;
 
-    $('tzNote').textContent = 'Times shown in ' + USER_TZ.replace(/_/g, ' ');
+    $('tzNote').textContent = t('timesShownIn') + ' ' + USER_TZ.replace(/_/g, ' ');
 
     var d = S.date;
     var dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -627,7 +793,7 @@ body{
 
       g.innerHTML = '';
       if (!data.slots || data.slots.length === 0) {
-        g.innerHTML = '<div class="ts-empty">No available times on this date</div>';
+        g.innerHTML = '<div class="ts-empty">' + t('noTimes') + '</div>';
         return;
       }
 
@@ -644,7 +810,7 @@ body{
         g.appendChild(b);
       });
     } catch (err) {
-      g.innerHTML = '<div class="ts-error">Could not load available times<br><button onclick="window._retrySlots()">Try again</button></div>';
+      g.innerHTML = '<div class="ts-error">' + t('couldNotLoad') + '<br><button onclick="window._retrySlots()">' + t('tryAgain') + '</button></div>';
     }
   }
   window._retrySlots = function() { loadSlots(); };
@@ -683,11 +849,11 @@ body{
   };
 
   async function renderCal() {
-    $('calMo').textContent = MN[calView.m] + ' ' + calView.y;
+    $('calMo').textContent = MN()[calView.m] + ' ' + calView.y;
     var grid = $('calGrid');
     grid.innerHTML = '';
 
-    DN.forEach(function(d) {
+    DN().forEach(function(d) {
       var el = document.createElement('div');
       el.className = 'cal-wk';
       el.textContent = d;
@@ -761,9 +927,9 @@ body{
     if (!S.slot) return;
 
     var slotDate = new Date(S.slot.start);
-    var dateStr = slotDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    var timeStr = slotDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    $('infoSlotSummary').textContent = dateStr + ' at ' + timeStr;
+    var dateStr = slotDate.toLocaleDateString(S.lang, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    var timeStr = slotDate.toLocaleTimeString(S.lang, { hour: '2-digit', minute: '2-digit' });
+    $('infoSlotSummary').textContent = dateStr + ' ' + t('at') + ' ' + timeStr;
 
     showView('viewInfo');
   };
@@ -785,7 +951,7 @@ body{
     e.preventDefault();
     var btn = $('btnBook');
     btn.disabled = true;
-    btn.textContent = 'Booking...';
+    btn.textContent = t('booking');
 
     var payload = {
       guest_name: $('gName').value.trim(),
@@ -813,8 +979,8 @@ body{
       });
 
       if (res.status === 409) {
-        showToast('That slot was just taken! Please pick another.', true);
-        btn.textContent = 'Book Meeting';
+        showToast(t('slotTaken'), true);
+        btn.textContent = t('bookMeeting');
         btn.disabled = false;
         showView('viewDatetime');
         loadSlots();
@@ -827,33 +993,34 @@ body{
 
       // Success
       var slotDate = new Date(S.slot.start);
-      var dateStr = slotDate.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      var timeStr = slotDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-      var mtLabel = S.meetingType ? S.meetingType.label : 'Meeting';
+      var dateStr = slotDate.toLocaleDateString(S.lang, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      var timeStr = slotDate.toLocaleTimeString(S.lang, { hour: '2-digit', minute: '2-digit' });
+      var mtLabel = S.meetingType ? S.meetingType.label : t('meeting');
       var staffName = data.booking && data.booking.staff_name;
 
       $('doneDetails').innerHTML =
         '<strong>' + mtLabel + '</strong><br>' +
-        dateStr + ' at ' + timeStr + '<br>' +
-        (payload.venue_name ? 'for ' + payload.venue_name : '');
+        dateStr + ' ' + t('at') + ' ' + timeStr + '<br>' +
+        (payload.venue_name ? t('forVenue') + ' ' + payload.venue_name : '');
 
       if (staffName) {
         var staffLine = document.createElement('div');
         staffLine.style.marginTop = '4px';
-        staffLine.innerHTML = 'with <strong></strong>';
+        staffLine.innerHTML = t('withStaff') + ' <strong></strong>';
         staffLine.querySelector('strong').textContent = staffName;
         $('doneDetails').appendChild(staffLine);
       }
 
       showView('viewDone');
     } catch (err) {
-      showToast('Booking failed. Please try again.', true);
-      btn.textContent = 'Book Meeting';
+      showToast(t('bookingFailed'), true);
+      btn.textContent = t('bookMeeting');
       btn.disabled = false;
     }
   };
 
   // -- Go --
+  applyLang();
   init();
 })();
 </script>
