@@ -39,8 +39,8 @@ async function createEvent({ summary, description, startTime, endTime, attendeeE
   const attendees = [];
   if (attendeeEmail) attendees.push({ email: attendeeEmail });
   if (staffEmail && staffEmail.toLowerCase() !== (attendeeEmail || '').toLowerCase()) {
-    // Mark staff as organizer-side attendee so they show in the invite and get notified if not already owner of the calendar
-    attendees.push({ email: staffEmail, organizer: !staffRefreshToken, responseStatus: 'accepted' });
+    // Always add staff as a regular attendee. In multi-staff mode the event lives on staff's own calendar (they're already the implicit organizer); in legacy mode this is how they get the invite.
+    attendees.push({ email: staffEmail });
   }
 
   const event = {
