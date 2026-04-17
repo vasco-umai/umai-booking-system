@@ -7,6 +7,7 @@ const { requireAdmin, requireRole, requireTeamLead, getEffectiveTeamId } = requi
 const calendarService = require('../services/calendarService');
 const emailService = require('../services/emailService');
 const staffService = require('../services/staffService');
+const { buildCalendarCopy } = require('../lib/calendarCopy');
 
 const router = Router();
 
@@ -592,22 +593,20 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
       calendarService.deleteEvent(booking.gcal_event_id, undefined, oldStaffToken).catch(() => {});
     }
 
-    // Build calendar description for new event
+    // Build calendar copy (summary + description) in customer language
     const isMini = booking.plan === 'mini';
     const isOnline = booking.meeting_type_label === 'Online' || booking.meeting_type_label === 'Freemium' || isMini;
     const guestTz = booking.guest_tz || 'UTC';
-    const guestDt = DateTime.fromJSDate(booking.slot_start, { zone: guestTz });
-    const formattedDay = guestDt.toFormat('MMMM d');
-    const formattedTime = guestDt.toFormat('HH:mm');
-
-    let calendarDescription;
-    if (isMini) {
-      calendarDescription = `We confirm our training session on day ${formattedDay}, online, at ${formattedTime}.\n\nThe setup and training session will last approximately 1 hour, divided as follows:\n- 30 to 40 minutes: UMAI account setup\n- 15 to 20 minutes: team training`;
-    } else if (isOnline) {
-      calendarDescription = `We confirm our training session on day ${formattedDay}, online, at ${formattedTime}.\n\nThe setup and training session will last approximately 2 hours, divided as follows:\n- 1h15 to 1h30: UMAI account setup\n- 30 to 45 minutes: team training`;
-    } else {
-      calendarDescription = `We confirm our training session on day ${formattedDay}, at ${booking.venue_address || booking.venue_name || 'the venue'}, at ${formattedTime}.\n\nThe setup and training session will last approximately 2 hours, divided as follows:\n- 1h15 to 1h30: UMAI account setup\n- 30 to 45 minutes: team training`;
-    }
+    const { summary: calSummary, description: calendarDescription } = buildCalendarCopy({
+      lang: booking.lang,
+      slotStartIso: booking.slot_start.toISOString(),
+      guestTz,
+      plan: booking.plan,
+      meetingTypeLabel: booking.meeting_type_label,
+      venueName: booking.venue_name,
+      venueAddress: booking.venue_address,
+      guestName: booking.guest_name,
+    });
 
     // Notify old staff that the booking was taken off their schedule
     if (oldStaffId) {
@@ -628,7 +627,7 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
 
     // Create new calendar event on new staff's calendar, then send update email
     calendarService.createEvent({
-      summary: `UMAI x ${booking.venue_name || booking.guest_name} - Setup and Settings Adjustments`,
+      summary: calSummary,
       description: calendarDescription,
       startTime: booking.slot_start.toISOString(),
       endTime: booking.slot_end.toISOString(),

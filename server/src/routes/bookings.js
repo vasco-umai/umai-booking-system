@@ -7,6 +7,7 @@ const { availabilityCache } = require('../lib/cache');
 const calendarService = require('../services/calendarService');
 const emailService = require('../services/emailService');
 const staffService = require('../services/staffService');
+const { buildCalendarCopy } = require('../lib/calendarCopy');
 const { isValidEmail, stripHtml } = require('../middleware/validate');
 
 const router = Router();
@@ -136,31 +137,27 @@ router.post('/', async (req, res, next) => {
     // Invalidate availability cache since a new booking was made
     availabilityCache.clear();
 
-    // Build calendar event description based on plan and meeting type
+    // Build calendar event copy (summary + description) in customer language
     const isMini = plan === 'mini';
     const isOnline = meetingTypeLabel === 'Online' || isMini;
-    const guestDt = DateTime.fromISO(slot_start, { zone: guest_tz || 'UTC' });
-    const formattedDay = guestDt.toFormat('MMMM d');
-    const formattedTime = guestDt.toFormat('HH:mm');
-
-    let calendarDescription;
-    if (isMini) {
-      calendarDescription = `We confirm our training session on day ${formattedDay}, online, at ${formattedTime}.\n\nThe setup and training session will last approximately 1 hour, divided as follows:\n- 30 to 40 minutes: UMAI account setup\n- 15 to 20 minutes: team training`;
-    } else if (isOnline) {
-      calendarDescription = `We confirm our training session on day ${formattedDay}, online, at ${formattedTime}.\n\nThe setup and training session will last approximately 2 hours, divided as follows:\n- 1h15 to 1h30: UMAI account setup\n- 30 to 45 minutes: team training`;
-    } else {
-      calendarDescription = `We confirm our training session on day ${formattedDay}, at ${venue_address || venue_name || 'the venue'}, at ${formattedTime}.\n\nThe setup and training session will last approximately 2 hours, divided as follows:\n- 1h15 to 1h30: UMAI account setup\n- 30 to 45 minutes: team training`;
-    }
-
-    if (Array.isArray(addons) && addons.length > 0) {
-      calendarDescription += `\n\nAdd-ons:\n` + addons.map(a => `- ${stripHtml(a)}`).join('\n');
-    }
+    const sanitizedAddons = Array.isArray(addons) ? addons.map(a => stripHtml(a)) : [];
+    const { summary, description: calendarDescription } = buildCalendarCopy({
+      lang,
+      slotStartIso: slot_start,
+      guestTz: guest_tz || 'UTC',
+      plan,
+      meetingTypeLabel,
+      venueName: venue_name,
+      venueAddress: venue_address,
+      guestName: guest_name,
+      addons: sanitizedAddons,
+    });
 
     // Create Google Calendar event (awaited so Vercel doesn't kill the function)
     let meetingLink = null;
     try {
       const { eventId, hangoutLink, failed } = await calendarService.createEvent({
-        summary: `UMAI x ${venue_name || guest_name} - Setup and Settings Adjustments`,
+        summary,
         description: calendarDescription,
         startTime: slot_start,
         endTime: slot_end,
