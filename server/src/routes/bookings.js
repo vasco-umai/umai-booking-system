@@ -201,6 +201,29 @@ router.post('/', async (req, res, next) => {
       logger.error({ err, bookingId: booking.id }, 'Confirmation email failed');
     }
 
+    // Notify assigned staff member (separate try/catch so failure never blocks the response)
+    if (assignedStaff?.email) {
+      try {
+        await emailService.sendStaffNewBooking({
+          staffEmail: assignedStaff.email,
+          staffName: assignedStaff.name,
+          guestName: guest_name,
+          guestEmail: guest_email,
+          guestPhone: guest_phone,
+          slotStart: slot_start,
+          slotEnd: slot_end,
+          staffTz: assignedStaff.timezone || undefined,
+          venueName: venue_name,
+          venueAddress: venue_address,
+          meetingTypeLabel,
+          meetingLink,
+          bookingId: booking.id,
+        });
+      } catch (err) {
+        logger.error({ err, bookingId: booking.id, staffEmail: assignedStaff.email }, 'Staff notification email failed');
+      }
+    }
+
     res.status(201).json({
       message: 'Booking confirmed',
       booking: {

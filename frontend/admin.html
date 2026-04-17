@@ -2960,17 +2960,24 @@ function renderBookingRow(b) {
   const status = (b.status || 'pending').toLowerCase();
   const badgeClass = 'badge-' + status;
   const showCancel = status === 'confirmed';
+  const showResend = status === 'confirmed';
+  const emailSent = b.confirmationEmailSent === true;
+  const emailDot = status === 'confirmed'
+    ? `<span title="${emailSent ? 'Confirmation email sent' : 'Confirmation email NOT sent'}" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:${emailSent ? '#22c55e' : '#ef4444'};"></span>`
+    : '';
+  const bookingKey = b._id || b.id;
   return `
     <tr>
       <td><strong>${escHtml(b.guestName || '-')}</strong></td>
-      <td>${escHtml(b.guestEmail || '-')}</td>
+      <td>${emailDot}${escHtml(b.guestEmail || '-')}</td>
       <td>${escHtml(b.venueName || '-')}</td>
       <td>${fmtDateTime(b.slotStart)}</td>
       <td>${escHtml(b.staffName || '-')}</td>
       <td>${escHtml(b.meetingTypeLabel || '-')}</td>
       <td><span class="badge ${badgeClass}">${status}</span></td>
-      <td style="text-align:right">
-        ${showCancel ? `<button class="btn-sm btn-sm-cancel" onclick="cancelBooking('${b._id || b.id}')">Cancel</button>` : ''}
+      <td style="text-align:right;white-space:nowrap;">
+        ${showResend ? `<button class="btn-sm" onclick="resendConfirmation('${bookingKey}', this)" style="margin-right:6px;">Resend</button>` : ''}
+        ${showCancel ? `<button class="btn-sm btn-sm-cancel" onclick="cancelBooking('${bookingKey}')">Cancel</button>` : ''}
       </td>
     </tr>`;
 }
@@ -3002,6 +3009,20 @@ window.cancelBooking = async function(id) {
     renderBookings();
   } catch (err) {
     showToast(err.message || 'Failed to cancel booking', 'error');
+  }
+};
+
+window.resendConfirmation = async function(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+  try {
+    await apiFetch('/api/admin/bookings/' + id + '/resend-confirmation', { method: 'POST' });
+    showToast('Confirmation email resent');
+    const entry = bookings.find(b => String(b._id || b.id) === String(id));
+    if (entry) entry.confirmationEmailSent = true;
+    renderBookings();
+  } catch (err) {
+    showToast(err.message || 'Failed to resend confirmation', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Resend'; }
   }
 };
 

@@ -515,6 +515,24 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
       logger.error({ err, bookingId: id }, 'Failed to send cancellation email');
     }
 
+    // Notify assigned staff that their booking was cancelled
+    if (staffEmail) {
+      try {
+        const staff = await staffService.getStaffById(booking.staff_member_id);
+        await emailService.sendStaffCancellation({
+          staffEmail,
+          staffName: staff?.name,
+          guestName: booking.guest_name,
+          guestEmail: booking.guest_email,
+          slotStart: booking.slot_start.toISOString(),
+          staffTz: staff?.timezone || undefined,
+          bookingId: booking.id,
+        });
+      } catch (err) {
+        logger.error({ err, bookingId: id, staffEmail }, 'Staff cancellation notification failed');
+      }
+    }
+
     logger.info({ bookingId: booking.id, adminId: req.admin.id }, 'Booking cancelled');
     res.json({ message: 'Booking cancelled', booking });
   } catch (err) { next(err); }
@@ -591,6 +609,23 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
       calendarDescription = `We confirm our training session on day ${formattedDay}, at ${booking.venue_address || booking.venue_name || 'the venue'}, at ${formattedTime}.\n\nThe setup and training session will last approximately 2 hours, divided as follows:\n- 1h15 to 1h30: UMAI account setup\n- 30 to 45 minutes: team training`;
     }
 
+    // Notify old staff that the booking was taken off their schedule
+    if (oldStaffId) {
+      staffService.getStaffById(oldStaffId).then(oldStaff => {
+        if (oldStaff?.email) {
+          return emailService.sendStaffCancellation({
+            staffEmail: oldStaff.email,
+            staffName: oldStaff.name,
+            guestName: booking.guest_name,
+            guestEmail: booking.guest_email,
+            slotStart: booking.slot_start.toISOString(),
+            staffTz: oldStaff.timezone || undefined,
+            bookingId: booking.id,
+          });
+        }
+      }).catch(err => logger.error({ err, bookingId: id, oldStaffId }, 'Old-staff reassignment notification failed'));
+    }
+
     // Create new calendar event on new staff's calendar, then send update email
     calendarService.createEvent({
       summary: `UMAI x ${booking.venue_name || booking.guest_name} - Setup and Settings Adjustments`,
@@ -608,8 +643,10 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
         pool.query('UPDATE bookings SET gcal_event_id = NULL, gcal_sync_failed = true, meeting_link = NULL WHERE id = $1', [id]);
       }
 
-      // Send update email with meeting link
-      return emailService.sendUpdate({
+      const resolvedMeetingLink = hangoutLink || booking.meeting_link || null;
+
+      // Send update email to the guest
+      const guestEmailPromise = emailService.sendUpdate({
         guestName: booking.guest_name,
         guestEmail: booking.guest_email,
         slotStart: booking.slot_start.toISOString(),
@@ -618,13 +655,32 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
         venueName: booking.venue_name,
         venueAddress: booking.venue_address,
         meetingTypeLabel: booking.meeting_type_label || 'Training',
-        meetingLink: hangoutLink || booking.meeting_link || null,
+        meetingLink: resolvedMeetingLink,
         replyTo: newStaff.email || undefined,
         lang: booking.lang,
       });
+
+      // Notify the new staff member they now own this booking
+      const staffEmailPromise = newStaff.email ? emailService.sendStaffNewBooking({
+        staffEmail: newStaff.email,
+        staffName: newStaff.name,
+        guestName: booking.guest_name,
+        guestEmail: booking.guest_email,
+        guestPhone: booking.guest_phone,
+        slotStart: booking.slot_start.toISOString(),
+        slotEnd: booking.slot_end.toISOString(),
+        staffTz: newStaff.timezone || undefined,
+        venueName: booking.venue_name,
+        venueAddress: booking.venue_address,
+        meetingTypeLabel: booking.meeting_type_label || 'Training',
+        meetingLink: resolvedMeetingLink,
+        bookingId: booking.id,
+      }) : Promise.resolve();
+
+      return Promise.all([guestEmailPromise, staffEmailPromise]);
     }).catch(err => {
       logger.error({ err, bookingId: id }, 'Calendar or update email failed during reassignment');
-      // Still try to send email without meeting link
+      // Still try to send emails without meeting link
       emailService.sendUpdate({
         guestName: booking.guest_name,
         guestEmail: booking.guest_email,
@@ -638,6 +694,23 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
         replyTo: newStaff.email || undefined,
         lang: booking.lang,
       }).catch(() => {});
+      if (newStaff.email) {
+        emailService.sendStaffNewBooking({
+          staffEmail: newStaff.email,
+          staffName: newStaff.name,
+          guestName: booking.guest_name,
+          guestEmail: booking.guest_email,
+          guestPhone: booking.guest_phone,
+          slotStart: booking.slot_start.toISOString(),
+          slotEnd: booking.slot_end.toISOString(),
+          staffTz: newStaff.timezone || undefined,
+          venueName: booking.venue_name,
+          venueAddress: booking.venue_address,
+          meetingTypeLabel: booking.meeting_type_label || 'Training',
+          meetingLink: null,
+          bookingId: booking.id,
+        }).catch(() => {});
+      }
     });
 
     // Invalidate cache

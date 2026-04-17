@@ -219,4 +219,173 @@ async function sendUpdate({ guestName, guestEmail, slotStart, slotEnd, guestTz, 
   }
 }
 
-module.exports = { sendConfirmation, sendCancellation, sendUpdate };
+/* ─────────────────────────────────────────────────────────────
+ * Staff-facing notifications (English only, inline HTML)
+ * ───────────────────────────────────────────────────────────── */
+
+const STAFF_TZ_DEFAULT = 'Europe/Lisbon';
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function staffEmailFrame(innerHtml) {
+  const dashboardUrl = `${process.env.FRONTEND_URL || ''}/admin.html`;
+  return `
+    <div style="font-family:'DM Sans',Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#2D2D3A;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:22px;font-weight:700;color:#2BBCB3;">UMAI Meetings</div>
+      </div>
+      ${innerHtml}
+      <p style="color:#71717A;font-size:12px;margin-top:32px;text-align:center;">
+        <a href="${dashboardUrl}" style="color:#2BBCB3;text-decoration:none;">Open admin dashboard</a>
+      </p>
+    </div>`;
+}
+
+async function sendStaffNewBooking({
+  staffEmail, staffName, guestName, guestEmail, guestPhone,
+  slotStart, slotEnd, staffTz, venueName, venueAddress,
+  meetingTypeLabel, meetingLink, bookingId,
+}) {
+  const transporter = getTransporter();
+  if (!transporter || !staffEmail) return false;
+
+  const tz = staffTz || STAFF_TZ_DEFAULT;
+  const startDt = DateTime.fromISO(slotStart, { zone: tz });
+  const endDt = DateTime.fromISO(slotEnd, { zone: tz });
+  const dateStr = startDt.toFormat('EEEE, MMMM d, yyyy');
+  const timeStr = `${startDt.toFormat('h:mm a')} - ${endDt.toFormat('h:mm a')}`;
+  const tzStr = startDt.toFormat('ZZZZZ');
+
+  const inner = `
+    <h2 style="font-size:20px;margin:0 0 8px;">New booking: ${escapeHtml(guestName)}</h2>
+    <p style="margin:0 0 20px;color:#52525B;">
+      Hi ${escapeHtml(staffName || 'there')}, a new training session was just booked with you.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+      <tr><td style="padding:8px 0;color:#71717A;width:120px;">When</td><td style="padding:8px 0;"><strong>${dateStr}</strong><br>${timeStr} (${tzStr})</td></tr>
+      <tr><td style="padding:8px 0;color:#71717A;">Guest</td><td style="padding:8px 0;">${escapeHtml(guestName)}</td></tr>
+      <tr><td style="padding:8px 0;color:#71717A;">Email</td><td style="padding:8px 0;"><a href="mailto:${escapeHtml(guestEmail)}" style="color:#2BBCB3;">${escapeHtml(guestEmail)}</a></td></tr>
+      ${guestPhone ? `<tr><td style="padding:8px 0;color:#71717A;">Phone</td><td style="padding:8px 0;">${escapeHtml(guestPhone)}</td></tr>` : ''}
+      ${venueName ? `<tr><td style="padding:8px 0;color:#71717A;">Venue</td><td style="padding:8px 0;">${escapeHtml(venueName)}${venueAddress ? `<br><span style="color:#71717A;">${escapeHtml(venueAddress)}</span>` : ''}</td></tr>` : ''}
+      ${meetingTypeLabel ? `<tr><td style="padding:8px 0;color:#71717A;">Type</td><td style="padding:8px 0;">${escapeHtml(meetingTypeLabel)}</td></tr>` : ''}
+      ${bookingId ? `<tr><td style="padding:8px 0;color:#71717A;">Booking ID</td><td style="padding:8px 0;color:#71717A;">#${escapeHtml(bookingId)}</td></tr>` : ''}
+    </table>
+    ${buildMeetingLinkBlock(meetingLink, 'en')}`;
+
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || 'UMAI <noreply@umai.io>',
+      to: staffEmail,
+      replyTo: guestEmail,
+      subject: `New UMAI booking: ${guestName} - ${dateStr}`,
+      html: staffEmailFrame(inner),
+    });
+    logger.info({ to: staffEmail, bookingId }, 'Staff new-booking email sent');
+    return true;
+  } catch (err) {
+    logger.error({ err, to: staffEmail, bookingId }, 'Failed to send staff new-booking email');
+    return false;
+  }
+}
+
+async function sendStaffCancellation({
+  staffEmail, staffName, guestName, guestEmail,
+  slotStart, staffTz, bookingId,
+}) {
+  const transporter = getTransporter();
+  if (!transporter || !staffEmail) return false;
+
+  const tz = staffTz || STAFF_TZ_DEFAULT;
+  const startDt = DateTime.fromISO(slotStart, { zone: tz });
+  const dateStr = startDt.toFormat('EEEE, MMMM d, yyyy');
+  const timeStr = startDt.toFormat('h:mm a');
+  const tzStr = startDt.toFormat('ZZZZZ');
+
+  const inner = `
+    <h2 style="font-size:20px;margin:0 0 8px;">Booking cancelled</h2>
+    <p style="margin:0 0 20px;color:#52525B;">
+      Hi ${escapeHtml(staffName || 'there')}, the following training session was cancelled.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <tr><td style="padding:8px 0;color:#71717A;width:120px;">When</td><td style="padding:8px 0;"><strong>${dateStr}</strong> at ${timeStr} (${tzStr})</td></tr>
+      <tr><td style="padding:8px 0;color:#71717A;">Guest</td><td style="padding:8px 0;">${escapeHtml(guestName)}</td></tr>
+      <tr><td style="padding:8px 0;color:#71717A;">Email</td><td style="padding:8px 0;"><a href="mailto:${escapeHtml(guestEmail)}" style="color:#2BBCB3;">${escapeHtml(guestEmail)}</a></td></tr>
+      ${bookingId ? `<tr><td style="padding:8px 0;color:#71717A;">Booking ID</td><td style="padding:8px 0;color:#71717A;">#${escapeHtml(bookingId)}</td></tr>` : ''}
+    </table>`;
+
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || 'UMAI <noreply@umai.io>',
+      to: staffEmail,
+      subject: `Cancelled: UMAI booking with ${guestName} - ${dateStr}`,
+      html: staffEmailFrame(inner),
+    });
+    logger.info({ to: staffEmail, bookingId }, 'Staff cancellation email sent');
+    return true;
+  } catch (err) {
+    logger.error({ err, to: staffEmail, bookingId }, 'Failed to send staff cancellation email');
+    return false;
+  }
+}
+
+async function sendStaffUpdate({
+  staffEmail, staffName, guestName, guestEmail,
+  slotStart, slotEnd, staffTz, venueName, meetingTypeLabel,
+  meetingLink, bookingId, note,
+}) {
+  const transporter = getTransporter();
+  if (!transporter || !staffEmail) return false;
+
+  const tz = staffTz || STAFF_TZ_DEFAULT;
+  const startDt = DateTime.fromISO(slotStart, { zone: tz });
+  const endDt = DateTime.fromISO(slotEnd, { zone: tz });
+  const dateStr = startDt.toFormat('EEEE, MMMM d, yyyy');
+  const timeStr = `${startDt.toFormat('h:mm a')} - ${endDt.toFormat('h:mm a')}`;
+  const tzStr = startDt.toFormat('ZZZZZ');
+
+  const inner = `
+    <h2 style="font-size:20px;margin:0 0 8px;">Booking updated: ${escapeHtml(guestName)}</h2>
+    <p style="margin:0 0 20px;color:#52525B;">
+      Hi ${escapeHtml(staffName || 'there')}, a booking assigned to you was updated.${note ? ` ${escapeHtml(note)}` : ''}
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
+      <tr><td style="padding:8px 0;color:#71717A;width:120px;">When</td><td style="padding:8px 0;"><strong>${dateStr}</strong><br>${timeStr} (${tzStr})</td></tr>
+      <tr><td style="padding:8px 0;color:#71717A;">Guest</td><td style="padding:8px 0;">${escapeHtml(guestName)}</td></tr>
+      <tr><td style="padding:8px 0;color:#71717A;">Email</td><td style="padding:8px 0;"><a href="mailto:${escapeHtml(guestEmail)}" style="color:#2BBCB3;">${escapeHtml(guestEmail)}</a></td></tr>
+      ${venueName ? `<tr><td style="padding:8px 0;color:#71717A;">Venue</td><td style="padding:8px 0;">${escapeHtml(venueName)}</td></tr>` : ''}
+      ${meetingTypeLabel ? `<tr><td style="padding:8px 0;color:#71717A;">Type</td><td style="padding:8px 0;">${escapeHtml(meetingTypeLabel)}</td></tr>` : ''}
+      ${bookingId ? `<tr><td style="padding:8px 0;color:#71717A;">Booking ID</td><td style="padding:8px 0;color:#71717A;">#${escapeHtml(bookingId)}</td></tr>` : ''}
+    </table>
+    ${buildMeetingLinkBlock(meetingLink, 'en')}`;
+
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || 'UMAI <noreply@umai.io>',
+      to: staffEmail,
+      replyTo: guestEmail,
+      subject: `Updated: UMAI booking with ${guestName} - ${dateStr}`,
+      html: staffEmailFrame(inner),
+    });
+    logger.info({ to: staffEmail, bookingId }, 'Staff update email sent');
+    return true;
+  } catch (err) {
+    logger.error({ err, to: staffEmail, bookingId }, 'Failed to send staff update email');
+    return false;
+  }
+}
+
+module.exports = {
+  sendConfirmation,
+  sendCancellation,
+  sendUpdate,
+  sendStaffNewBooking,
+  sendStaffCancellation,
+  sendStaffUpdate,
+};
