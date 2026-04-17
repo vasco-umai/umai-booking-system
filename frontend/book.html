@@ -448,7 +448,7 @@ body{
       min:'min',
       months:['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'],
       monthsShort:['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'],
-      daysShort:['Do','Se','Te','Qu','Qu','Se','Sá'],
+      daysShort:['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
       daysMed:['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
       mtypeLabel:{online:'Online',in_person:'Presencial','in-person':'Presencial',freemium:'Freemium'},
       pageTitle:'UMAI - Marcar Reunião'
@@ -563,6 +563,7 @@ body{
     meetingType: null,
     date: new Date(),
     slot: null,
+    loadedSlots: [],
     prefill: {},
     lang: 'en'
   };
@@ -580,6 +581,36 @@ body{
 
   // -- Translation helpers --
   function t(key) { return (T[S.lang] && T[S.lang][key]) || T.en[key] || key; }
+  function renderTimeSlots(g, slots) {
+    g.innerHTML = '';
+    slots.forEach(function(slot) {
+      var b = document.createElement('button');
+      b.className = 'ts';
+      if (S.slot && S.slot.start === slot.start) b.classList.add('on');
+      b.textContent = formatSlotTime(slot);
+      b.onclick = function() {
+        document.querySelectorAll('.ts').forEach(function(x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        S.slot = slot;
+        $('btnDatetime').disabled = false;
+      };
+      g.appendChild(b);
+    });
+  }
+  function formatSlotTime(slot) {
+    try {
+      var d = new Date(slot.start);
+      var use12h = (S.lang === 'en');
+      return d.toLocaleTimeString(S.lang || 'en', {
+        hour: use12h ? 'numeric' : '2-digit',
+        minute: '2-digit',
+        hour12: use12h,
+        timeZone: USER_TZ,
+      });
+    } catch (e) {
+      return slot.display || '';
+    }
+  }
   function mtypeDisplay(mt) {
     if (!mt) return '';
     var dict = T[S.lang] && T[S.lang].mtypeLabel;
@@ -620,6 +651,10 @@ body{
     // Re-render calendar day headers + month if open/rendered
     if ($('calGrid') && $('calGrid').children.length > 0 && calView.m != null) {
       renderCal();
+    }
+    // Re-render time slots with locale-appropriate time format
+    if ($('timeG') && S.loadedSlots && S.loadedSlots.length > 0) {
+      renderTimeSlots($('timeG'), S.loadedSlots);
     }
     // Re-render info step summary if we have a selected slot
     if ($('infoSlotSummary') && $('infoSlotSummary').textContent && S.slot) {
@@ -862,23 +897,12 @@ body{
       var data = await res.json();
 
       g.innerHTML = '';
+      S.loadedSlots = data.slots || [];
       if (!data.slots || data.slots.length === 0) {
         g.innerHTML = '<div class="ts-empty">' + t('noTimes') + '</div>';
         return;
       }
-
-      data.slots.forEach(function(slot) {
-        var b = document.createElement('button');
-        b.className = 'ts';
-        b.textContent = slot.display;
-        b.onclick = function() {
-          document.querySelectorAll('.ts').forEach(function(x) { x.classList.remove('on'); });
-          b.classList.add('on');
-          S.slot = slot;
-          $('btnDatetime').disabled = false;
-        };
-        g.appendChild(b);
-      });
+      renderTimeSlots(g, data.slots);
     } catch (err) {
       g.innerHTML = '<div class="ts-error">' + t('couldNotLoad') + '<br><button onclick="window._retrySlots()">' + t('tryAgain') + '</button></div>';
     }

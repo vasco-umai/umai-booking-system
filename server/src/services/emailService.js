@@ -235,7 +235,8 @@ function escapeHtml(s) {
 }
 
 function staffEmailFrame(innerHtml) {
-  const dashboardUrl = `${process.env.FRONTEND_URL || ''}/admin.html`;
+  const baseUrl = process.env.FRONTEND_URL || 'https://umai-booking.vercel.app';
+  const dashboardUrl = `${baseUrl}/admin.html`;
   return `
     <div style="font-family:'DM Sans',Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;color:#2D2D3A;">
       <div style="text-align:center;margin-bottom:24px;">
