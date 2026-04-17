@@ -424,7 +424,9 @@ body{
       months:['January','February','March','April','May','June','July','August','September','October','November','December'],
       monthsShort:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
       daysShort:['Su','Mo','Tu','We','Th','Fr','Sa'],
-      daysMed:['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+      daysMed:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+      mtypeLabel:{online:'Online',in_person:'In-Person','in-person':'In-Person',freemium:'Freemium'},
+      pageTitle:'UMAI - Book a Meeting'
     },
     pt: {
       loading:'A carregar...', invalidLink:'Link Inválido',
@@ -447,7 +449,9 @@ body{
       months:['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'],
       monthsShort:['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'],
       daysShort:['Do','Se','Te','Qu','Qu','Se','Sá'],
-      daysMed:['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+      daysMed:['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
+      mtypeLabel:{online:'Online',in_person:'Presencial','in-person':'Presencial',freemium:'Freemium'},
+      pageTitle:'UMAI - Marcar Reunião'
     },
     es: {
       loading:'Cargando...', invalidLink:'Enlace Inválido',
@@ -470,7 +474,9 @@ body{
       months:['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],
       monthsShort:['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'],
       daysShort:['Do','Lu','Ma','Mi','Ju','Vi','Sá'],
-      daysMed:['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+      daysMed:['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],
+      mtypeLabel:{online:'Online',in_person:'Presencial','in-person':'Presencial',freemium:'Freemium'},
+      pageTitle:'UMAI - Reservar Reunión'
     },
     fr: {
       loading:'Chargement...', invalidLink:'Lien Invalide',
@@ -493,7 +499,9 @@ body{
       months:['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'],
       monthsShort:['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'],
       daysShort:['Di','Lu','Ma','Me','Je','Ve','Sa'],
-      daysMed:['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']
+      daysMed:['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'],
+      mtypeLabel:{online:'En ligne',in_person:'En personne','in-person':'En personne',freemium:'Freemium'},
+      pageTitle:'UMAI - Réserver une Réunion'
     },
     de: {
       loading:'Laden...', invalidLink:'Ungültiger Link',
@@ -516,7 +524,9 @@ body{
       months:['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'],
       monthsShort:['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'],
       daysShort:['So','Mo','Di','Mi','Do','Fr','Sa'],
-      daysMed:['Son','Mon','Die','Mit','Don','Fre','Sam']
+      daysMed:['Son','Mon','Die','Mit','Don','Fre','Sam'],
+      mtypeLabel:{online:'Online',in_person:'Persönlich','in-person':'Persönlich',freemium:'Freemium'},
+      pageTitle:'UMAI - Termin buchen'
     },
     da: {
       loading:'Indlæser...', invalidLink:'Ugyldigt Link',
@@ -539,7 +549,9 @@ body{
       months:['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'],
       monthsShort:['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'],
       daysShort:['Sø','Ma','Ti','On','To','Fr','Lø'],
-      daysMed:['Søn','Man','Tir','Ons','Tor','Fre','Lør']
+      daysMed:['Søn','Man','Tir','Ons','Tor','Fre','Lør'],
+      mtypeLabel:{online:'Online',in_person:'Personligt','in-person':'Personligt',freemium:'Freemium'},
+      pageTitle:'UMAI - Book et møde'
     }
   };
 
@@ -568,8 +580,22 @@ body{
 
   // -- Translation helpers --
   function t(key) { return (T[S.lang] && T[S.lang][key]) || T.en[key] || key; }
+  function mtypeDisplay(mt) {
+    if (!mt) return '';
+    var dict = T[S.lang] && T[S.lang].mtypeLabel;
+    if (dict && mt.name && dict[mt.name] != null) return dict[mt.name];
+    // Fallback: try case-insensitive match on the DB label against the EN dict
+    var enDict = T.en.mtypeLabel || {};
+    if (dict && mt.label) {
+      for (var k in enDict) {
+        if (enDict[k].toLowerCase() === mt.label.toLowerCase() && dict[k] != null) return dict[k];
+      }
+    }
+    return mt.label || '';
+  }
   function applyLang() {
     document.documentElement.lang = S.lang;
+    if (T[S.lang] && T[S.lang].pageTitle) document.title = T[S.lang].pageTitle;
     document.querySelectorAll('[data-t]').forEach(function(el) {
       var k = el.getAttribute('data-t');
       if (T[S.lang] && T[S.lang][k] != null) el.textContent = T[S.lang][k];
@@ -586,7 +612,44 @@ body{
     if ($('calTxt') && $('calTxt').textContent) updateCalText();
     if ($('calMo') && $('calMo').textContent && calView.m != null) $('calMo').textContent = T[S.lang].months[calView.m] + ' ' + calView.y;
     if ($('tzNote') && $('tzNote').textContent) $('tzNote').textContent = t('timesShownIn') + ' ' + USER_TZ.replace(/_/g, ' ');
-    if ($('mtypeLabel') && S.meetingType) $('mtypeLabel').textContent = S.meetingType.label + ' - ' + S.meetingType.duration_minutes + ' ' + t('min');
+    if ($('mtypeLabel') && S.meetingType) $('mtypeLabel').textContent = mtypeDisplay(S.meetingType) + ' - ' + S.meetingType.duration_minutes + ' ' + t('min');
+    // Re-render meeting type cards if already built
+    if ($('mtypeGrid') && $('mtypeGrid').children.length > 0 && S.meetingTypes && S.meetingTypes.length > 0) {
+      renderMtypeCards();
+    }
+    // Re-render calendar day headers + month if open/rendered
+    if ($('calGrid') && $('calGrid').children.length > 0 && calView.m != null) {
+      renderCal();
+    }
+    // Re-render info step summary if we have a selected slot
+    if ($('infoSlotSummary') && $('infoSlotSummary').textContent && S.slot) {
+      var slotDate = new Date(S.slot.start);
+      var dateStr = slotDate.toLocaleDateString(S.lang, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      var timeStr = slotDate.toLocaleTimeString(S.lang, { hour: '2-digit', minute: '2-digit' });
+      $('infoSlotSummary').textContent = dateStr + ' ' + t('at') + ' ' + timeStr;
+    }
+    // Re-render done view if it's showing
+    if ($('doneDetails') && $('doneDetails').innerHTML && S.slot) {
+      var slotDate2 = new Date(S.slot.start);
+      var dStr = slotDate2.toLocaleDateString(S.lang, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      var tStr = slotDate2.toLocaleTimeString(S.lang, { hour: '2-digit', minute: '2-digit' });
+      var mtL = mtypeDisplay(S.meetingType) || t('meeting');
+      var venueName = (document.getElementById('gVenue') && document.getElementById('gVenue').value) || '';
+      var staffEl = $('doneDetails').querySelector('.staff-line strong');
+      var staffName = staffEl ? staffEl.textContent : '';
+      $('doneDetails').innerHTML =
+        '<strong>' + mtL + '</strong><br>' +
+        dStr + ' ' + t('at') + ' ' + tStr + '<br>' +
+        (venueName ? t('forVenue') + ' ' + venueName : '');
+      if (staffName) {
+        var line = document.createElement('div');
+        line.className = 'staff-line';
+        line.style.marginTop = '4px';
+        line.innerHTML = t('withStaff') + ' <strong></strong>';
+        line.querySelector('strong').textContent = staffName;
+        $('doneDetails').appendChild(line);
+      }
+    }
   }
 
   // -- Language selector --
@@ -690,22 +753,29 @@ body{
   // -- Meeting Type Cards --
   function renderMtypeCards() {
     var grid = $('mtypeGrid');
+    var prevSelectedId = S.meetingType && S.meetingType.id;
     grid.innerHTML = '';
-    S.meetingType = null;
-    $('btnMtype').disabled = true;
+    if (!prevSelectedId) {
+      S.meetingType = null;
+      $('btnMtype').disabled = true;
+    }
 
     S.meetingTypes.forEach(function(mt) {
       var isInPerson = mt.name === 'in_person' || mt.name === 'in-person';
 
       var card = document.createElement('div');
       card.className = 'mtype-card';
+      if (prevSelectedId && mt.id === prevSelectedId) {
+        card.classList.add('selected');
+        $('btnMtype').disabled = false;
+      }
 
       var icon = isInPerson
         ? '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
         : '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
 
       card.innerHTML = icon
-        + '<div class="mtype-label">' + mt.label + '</div>'
+        + '<div class="mtype-label">' + mtypeDisplay(mt) + '</div>'
         + '<div class="mtype-duration">' + mt.duration_minutes + ' ' + t('min') + '</div>';
 
       card.onclick = function() {
@@ -732,7 +802,7 @@ body{
     $('btnDatetime').disabled = true;
 
     var label = S.meetingType
-      ? S.meetingType.label + ' - ' + S.meetingType.duration_minutes + ' ' + t('min')
+      ? mtypeDisplay(S.meetingType) + ' - ' + S.meetingType.duration_minutes + ' ' + t('min')
       : '';
     $('mtypeLabel').textContent = label;
 
@@ -995,7 +1065,7 @@ body{
       var slotDate = new Date(S.slot.start);
       var dateStr = slotDate.toLocaleDateString(S.lang, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
       var timeStr = slotDate.toLocaleTimeString(S.lang, { hour: '2-digit', minute: '2-digit' });
-      var mtLabel = S.meetingType ? S.meetingType.label : t('meeting');
+      var mtLabel = S.meetingType ? mtypeDisplay(S.meetingType) : t('meeting');
       var staffName = data.booking && data.booking.staff_name;
 
       $('doneDetails').innerHTML =
@@ -1005,6 +1075,7 @@ body{
 
       if (staffName) {
         var staffLine = document.createElement('div');
+        staffLine.className = 'staff-line';
         staffLine.style.marginTop = '4px';
         staffLine.innerHTML = t('withStaff') + ' <strong></strong>';
         staffLine.querySelector('strong').textContent = staffName;
