@@ -212,6 +212,35 @@ body{
   border:1.5px solid var(--teal);
 }
 .btn-sm-teal:hover{background:var(--teal-dark)}
+.row-actions{position:relative;display:inline-block;}
+.row-actions-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 12px;font-size:13px;font-weight:500;
+  background:transparent;color:var(--text);
+  border:1.5px solid var(--border);border-radius:var(--r-pill);
+  cursor:pointer;transition:var(--tr);
+}
+.row-actions-btn:hover{border-color:var(--teal);color:var(--teal);}
+.row-actions-btn svg{width:12px;height:12px;transition:var(--tr);}
+.row-actions.open .row-actions-btn{border-color:var(--teal);color:var(--teal);}
+.row-actions.open .row-actions-btn svg{transform:rotate(180deg);}
+.row-actions-menu{
+  display:none;position:absolute;top:calc(100% + 4px);right:0;z-index:50;
+  min-width:180px;background:#fff;border:1px solid var(--border);
+  border-radius:var(--r-sm);box-shadow:0 4px 16px rgba(0,0,0,0.08);
+  padding:4px 0;
+}
+.row-actions.open .row-actions-menu{display:block;animation:fadeUp .15s ease;}
+.row-actions-item{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:10px 14px;text-align:left;font-size:13px;
+  background:transparent;border:none;color:var(--text);cursor:pointer;
+  transition:var(--tr);
+}
+.row-actions-item:hover{background:var(--bg);color:var(--teal);}
+.row-actions-item.danger{color:var(--warning);}
+.row-actions-item.danger:hover{background:rgba(245,158,11,0.06);color:var(--warning);}
+.row-actions-item svg{width:14px;height:14px;flex-shrink:0;}
 .link-row{
   display:flex;align-items:center;justify-content:space-between;
   padding:12px 14px;border-radius:8px;margin-bottom:8px;
@@ -1206,6 +1235,20 @@ tbody tr:hover{background:var(--card)}
     <div class="dialog-actions">
       <button class="btn-sm btn-sm-outline" id="confirmNo">Cancel</button>
       <button class="btn-sm btn-sm-danger" id="confirmYes">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== REASSIGN BOOKING DIALOG ===== -->
+<div class="overlay" id="reassignOverlay">
+  <div class="dialog">
+    <h3>Reassign Booking</h3>
+    <p id="reassignMsg" style="margin-bottom:16px;">Pick the staff member this booking should move to. The current assignee will be notified; the new assignee will get a fresh calendar invite and Meet link.</p>
+    <label for="reassignSelect" style="display:block;font-size:13px;font-weight:500;color:var(--text-mid);margin-bottom:6px;">Assign to</label>
+    <select id="reassignSelect" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:14px;background:#fff;"></select>
+    <div class="dialog-actions">
+      <button class="btn-sm btn-sm-outline" id="reassignCancelBtn">Cancel</button>
+      <button class="btn-sm btn-sm-teal" id="reassignConfirmBtn">Reassign</button>
     </div>
   </div>
 </div>
@@ -2959,13 +3002,33 @@ function renderBookings() {
 function renderBookingRow(b) {
   const status = (b.status || 'pending').toLowerCase();
   const badgeClass = 'badge-' + status;
-  const showCancel = status === 'confirmed';
-  const showResend = status === 'confirmed';
+  const isConfirmed = status === 'confirmed';
   const emailSent = b.confirmationEmailSent === true;
-  const emailDot = status === 'confirmed'
+  const emailDot = isConfirmed
     ? `<span title="${emailSent ? 'Confirmation email sent' : 'Confirmation email NOT sent'}" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:${emailSent ? '#22c55e' : '#ef4444'};"></span>`
     : '';
   const bookingKey = b._id || b.id;
+  const actions = isConfirmed ? `
+    <div class="row-actions" data-booking-id="${bookingKey}">
+      <button class="row-actions-btn" onclick="toggleRowActions(event, '${bookingKey}')">
+        Actions
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="row-actions-menu">
+        <button class="row-actions-item" onclick="resendConfirmation('${bookingKey}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Resend confirmation
+        </button>
+        <button class="row-actions-item" onclick="reassignBooking('${bookingKey}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Reassign
+        </button>
+        <button class="row-actions-item danger" onclick="cancelBooking('${bookingKey}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          Cancel booking
+        </button>
+      </div>
+    </div>` : '';
   return `
     <tr>
       <td><strong>${escHtml(b.guestName || '-')}</strong></td>
@@ -2975,10 +3038,7 @@ function renderBookingRow(b) {
       <td>${escHtml(b.staffName || '-')}</td>
       <td>${escHtml(b.meetingTypeLabel || '-')}</td>
       <td><span class="badge ${badgeClass}">${status}</span></td>
-      <td style="text-align:right;white-space:nowrap;">
-        ${showResend ? `<button class="btn-sm" onclick="resendConfirmation('${bookingKey}', this)" style="margin-right:6px;">Resend</button>` : ''}
-        ${showCancel ? `<button class="btn-sm btn-sm-cancel" onclick="cancelBooking('${bookingKey}')">Cancel</button>` : ''}
-      </td>
+      <td style="text-align:right;white-space:nowrap;">${actions}</td>
     </tr>`;
 }
 
@@ -3012,8 +3072,8 @@ window.cancelBooking = async function(id) {
   }
 };
 
-window.resendConfirmation = async function(id, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+window.resendConfirmation = async function(id) {
+  closeAllRowActions();
   try {
     await apiFetch('/api/admin/bookings/' + id + '/resend-confirmation', { method: 'POST' });
     showToast('Confirmation email resent');
@@ -3022,7 +3082,97 @@ window.resendConfirmation = async function(id, btn) {
     renderBookings();
   } catch (err) {
     showToast(err.message || 'Failed to resend confirmation', 'error');
-    if (btn) { btn.disabled = false; btn.textContent = 'Resend'; }
+  }
+};
+
+window.toggleRowActions = function(e, id) {
+  e.stopPropagation();
+  const wrap = document.querySelector(`.row-actions[data-booking-id="${id}"]`);
+  if (!wrap) return;
+  const wasOpen = wrap.classList.contains('open');
+  closeAllRowActions();
+  if (!wasOpen) wrap.classList.add('open');
+};
+
+function closeAllRowActions() {
+  document.querySelectorAll('.row-actions.open').forEach(el => el.classList.remove('open'));
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.row-actions')) closeAllRowActions();
+});
+
+/* ---------- Reassign booking ---------- */
+const reassignOverlay    = $('#reassignOverlay');
+const reassignSelect     = $('#reassignSelect');
+const reassignMsg        = $('#reassignMsg');
+const reassignCancelBtn  = $('#reassignCancelBtn');
+const reassignConfirmBtn = $('#reassignConfirmBtn');
+let pendingReassignId = null;
+
+window.reassignBooking = async function(id) {
+  closeAllRowActions();
+  pendingReassignId = id;
+  // Ensure staff list is loaded
+  if (!staffMembers || staffMembers.length === 0) {
+    try {
+      staffMembers = await apiFetch('/api/admin/staff');
+    } catch (err) {
+      showToast('Failed to load staff list', 'error');
+      return;
+    }
+  }
+  const entry = bookings.find(b => String(b._id || b.id) === String(id));
+  const currentStaffId = entry ? (entry.staffMemberId || entry.staff_member_id) : null;
+  const options = (staffMembers || [])
+    .filter(s => s.isActive !== false && s.is_active !== false)
+    .filter(s => String(s.id) !== String(currentStaffId))
+    .map(s => {
+      const connected = s.googleRefreshToken || s.google_refresh_token;
+      const suffix = connected ? '' : ' (no Google — Meet link will not be generated)';
+      return `<option value="${s.id}">${escHtml(s.name)}${suffix}</option>`;
+    });
+  if (options.length === 0) {
+    showToast('No other staff members available to reassign to', 'error');
+    return;
+  }
+  reassignSelect.innerHTML = options.join('');
+  const currentName = entry && entry.staffName ? entry.staffName : 'unassigned';
+  reassignMsg.textContent = `Currently assigned to ${currentName}. Pick a new staff member — they'll get a new calendar invite and Meet link.`;
+  reassignOverlay.classList.add('open');
+};
+
+reassignCancelBtn.onclick = () => { reassignOverlay.classList.remove('open'); pendingReassignId = null; };
+reassignOverlay.addEventListener('click', e => {
+  if (e.target === reassignOverlay) { reassignOverlay.classList.remove('open'); pendingReassignId = null; }
+});
+
+reassignConfirmBtn.onclick = async () => {
+  if (!pendingReassignId) return;
+  const newStaffId = reassignSelect.value;
+  if (!newStaffId) return;
+  const id = pendingReassignId;
+  reassignOverlay.classList.remove('open');
+  pendingReassignId = null;
+  reassignConfirmBtn.disabled = true;
+  try {
+    const res = await apiFetch('/api/admin/bookings/' + id + '/reassign', {
+      method: 'PUT',
+      body: JSON.stringify({ staff_member_id: parseInt(newStaffId, 10) }),
+    });
+    showToast('Booking reassigned');
+    // Update local state
+    const entry = bookings.find(b => String(b._id || b.id) === String(id));
+    const newStaff = staffMembers.find(s => String(s.id) === String(newStaffId));
+    if (entry && newStaff) {
+      entry.staffMemberId = newStaff.id;
+      entry.staffName = newStaff.name;
+    }
+    renderBookings();
+  } catch (err) {
+    showToast(err.message || 'Failed to reassign booking', 'error');
+  } finally {
+    reassignConfirmBtn.disabled = false;
   }
 };
 
