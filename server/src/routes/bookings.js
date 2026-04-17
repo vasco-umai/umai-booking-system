@@ -165,6 +165,7 @@ router.post('/', async (req, res, next) => {
         startTime: slot_start,
         endTime: slot_end,
         attendeeEmail: guest_email,
+        staffEmail: assignedStaff?.email,
         timeZone: guest_tz || 'UTC',
         staffRefreshToken: assignedStaff?.google_refresh_token,
         addConference: isOnline,

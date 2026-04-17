@@ -27,7 +27,7 @@ async function withRetry(fn, label) {
  * Retries up to 3 times with exponential backoff.
  * Returns { eventId, failed } so callers can track sync status.
  */
-async function createEvent({ summary, description, startTime, endTime, attendeeEmail, timeZone, calendarId, staffRefreshToken, addConference }) {
+async function createEvent({ summary, description, startTime, endTime, attendeeEmail, staffEmail, timeZone, calendarId, staffRefreshToken, addConference }) {
   const calendar = staffRefreshToken
     ? getCalendarClientForStaff(staffRefreshToken)
     : getCalendarClient();
@@ -36,12 +36,19 @@ async function createEvent({ summary, description, startTime, endTime, attendeeE
 
   const targetCalendar = staffRefreshToken ? 'primary' : (calendarId || CALENDAR_ID);
 
+  const attendees = [];
+  if (attendeeEmail) attendees.push({ email: attendeeEmail });
+  if (staffEmail && staffEmail.toLowerCase() !== (attendeeEmail || '').toLowerCase()) {
+    // Mark staff as organizer-side attendee so they show in the invite and get notified if not already owner of the calendar
+    attendees.push({ email: staffEmail, organizer: !staffRefreshToken, responseStatus: 'accepted' });
+  }
+
   const event = {
     summary,
     description,
     start: { dateTime: startTime, timeZone: timeZone || 'UTC' },
     end: { dateTime: endTime, timeZone: timeZone || 'UTC' },
-    attendees: attendeeEmail ? [{ email: attendeeEmail }] : [],
+    attendees,
     reminders: {
       useDefault: false,
       overrides: [

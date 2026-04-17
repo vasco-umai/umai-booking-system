@@ -633,6 +633,7 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
       startTime: booking.slot_start.toISOString(),
       endTime: booking.slot_end.toISOString(),
       attendeeEmail: booking.guest_email,
+      staffEmail: newStaff.email,
       timeZone: guestTz,
       staffRefreshToken: newStaff.google_refresh_token,
       addConference: isOnline,
