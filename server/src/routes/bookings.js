@@ -229,7 +229,7 @@ router.post('/', async (req, res, next) => {
     }
 
     // Pushover notification (fire-and-forget — pushoverService swallows its own errors)
-    const pushDateDisplay = DateTime.fromISO(slot_start, { zone: guest_tz || 'Europe/Lisbon' }).toFormat('dd/MM HH:mm');
+    const pushDateDisplay = start.setZone(guest_tz || 'Europe/Lisbon').toFormat('dd/MM HH:mm');
     if (gcalFailed || !confirmationEmailSent) {
       const issues = [gcalFailed && 'GCal sync failed', !confirmationEmailSent && 'Email failed'].filter(Boolean).join(', ');
       pushover.sendNotification({
@@ -258,10 +258,15 @@ router.post('/', async (req, res, next) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
 
-    // Alert on hard failures so we don't silently lose bookings (fire-and-forget)
+    // Alert on hard failures so we don't silently lose bookings (fire-and-forget).
+    // Sanitize req.body fields: this is raw user input (sanitized locals aren't in scope here).
+    const safe = (v, max = 100) => stripHtml(String(v || '')).slice(0, max);
+    const failVenue = safe(req.body?.venue_name) || safe(req.body?.guest_name) || 'unknown';
+    const failSlot = safe(req.body?.slot_start, 40) || 'unknown';
+    const failErr = safe(err?.message, 200) || 'unknown error';
     pushover.sendNotification({
       title: 'Booking Failed',
-      message: `${req.body?.venue_name || req.body?.guest_name || 'unknown'}\nSlot: ${req.body?.slot_start || 'unknown'}\nError: ${err.message || 'unknown error'}`,
+      message: `${failVenue}\nSlot: ${failSlot}\nError: ${failErr}`,
       priority: 1,
     });
 

@@ -35,7 +35,7 @@ async function sendNotification({ title, message, priority = 0 }) {
       logger.warn({ status: res.status, body: text }, 'Pushover notification failed');
     }
   } catch (err) {
-    logger.warn({ err: err.message }, 'Pushover notification error');
+    logger.warn({ err }, 'Pushover notification error');
   }
 }
 
