@@ -537,7 +537,7 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
 
     logger.info({ bookingId: booking.id, adminId: req.admin.id }, 'Booking cancelled');
 
-    pushover.sendNotification({
+    await pushover.sendNotification({
       title: 'Booking Cancelled',
       message: `${booking.guest_name} - ${booking.venue_name || '-'}\nSlot: ${DateTime.fromJSDate(booking.slot_start, { zone: booking.guest_tz || 'Europe/Lisbon' }).toFormat('dd/MM HH:mm')}`,
     });
@@ -723,7 +723,7 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
 
     logger.info({ bookingId: id, oldStaffId, newStaffId: newStaff.id, adminId: req.admin.id }, 'Booking reassigned');
 
-    pushover.sendNotification({
+    await pushover.sendNotification({
       title: 'Booking Reassigned',
       message: `${booking.guest_name} - ${booking.venue_name || '-'}\n${oldStaff?.name || 'unassigned'} → ${newStaff.name}`,
     });

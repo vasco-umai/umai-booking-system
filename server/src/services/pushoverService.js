@@ -1,10 +1,13 @@
 const logger = require('../lib/logger');
 
 const PUSHOVER_URL = 'https://api.pushover.net/1/messages.json';
+const TIMEOUT_MS = 3000;
 
 /**
  * Send a Pushover notification.
  * Silently skips if credentials are not configured.
+ * Bounded to TIMEOUT_MS so callers (which now await this) don't hang
+ * the request past Vercel's serverless function limit.
  *
  * @param {object} opts
  * @param {string} opts.title - Notification title
@@ -17,6 +20,9 @@ async function sendNotification({ title, message, priority = 0 }) {
 
   if (!userKey || !appToken) return;
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
   try {
     const res = await fetch(PUSHOVER_URL, {
       method: 'POST',
@@ -28,6 +34,7 @@ async function sendNotification({ title, message, priority = 0 }) {
         message,
         priority,
       }),
+      signal: controller.signal,
     });
 
     if (!res.ok) {
@@ -36,6 +43,8 @@ async function sendNotification({ title, message, priority = 0 }) {
     }
   } catch (err) {
     logger.warn({ err }, 'Pushover notification error');
+  } finally {
+    clearTimeout(timer);
   }
 }
 
