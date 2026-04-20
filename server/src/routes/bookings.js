@@ -228,17 +228,18 @@ router.post('/', async (req, res, next) => {
       }
     }
 
-    // Pushover notification (fire-and-forget — pushoverService swallows its own errors)
+    // Pushover notification — awaited so the outbound fetch completes before
+    // Vercel tears down the serverless function. Bounded to 3s by the service.
     const pushDateDisplay = start.setZone(guest_tz || 'Europe/Lisbon').toFormat('dd/MM HH:mm');
     if (gcalFailed || !confirmationEmailSent) {
       const issues = [gcalFailed && 'GCal sync failed', !confirmationEmailSent && 'Email failed'].filter(Boolean).join(', ');
-      pushover.sendNotification({
+      await pushover.sendNotification({
         title: 'Booking Warning',
         message: `${venue_name || guest_name} - ${pushDateDisplay}\nStaff: ${assignedStaff?.name || 'none'}\nIssues: ${issues}`,
         priority: 1,
       });
     } else {
-      pushover.sendNotification({
+      await pushover.sendNotification({
         title: 'New Booking',
         message: `${venue_name || guest_name} - ${pushDateDisplay}\nStaff: ${assignedStaff?.name || 'unassigned'}\nPlan: ${plan || '-'}`,
       });
@@ -258,13 +259,14 @@ router.post('/', async (req, res, next) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
 
-    // Alert on hard failures so we don't silently lose bookings (fire-and-forget).
+    // Alert on hard failures so we don't silently lose bookings.
     // Sanitize req.body fields: this is raw user input (sanitized locals aren't in scope here).
+    // Awaited so the fetch completes before Vercel tears down the function; bounded to 3s.
     const safe = (v, max = 100) => stripHtml(String(v || '')).slice(0, max);
     const failVenue = safe(req.body?.venue_name) || safe(req.body?.guest_name) || 'unknown';
     const failSlot = safe(req.body?.slot_start, 40) || 'unknown';
     const failErr = safe(err?.message, 200) || 'unknown error';
-    pushover.sendNotification({
+    await pushover.sendNotification({
       title: 'Booking Failed',
       message: `${failVenue}\nSlot: ${failSlot}\nError: ${failErr}`,
       priority: 1,
