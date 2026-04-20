@@ -7,6 +7,7 @@ const { requireAdmin, requireRole, requireTeamLead, getEffectiveTeamId } = requi
 const calendarService = require('../services/calendarService');
 const emailService = require('../services/emailService');
 const staffService = require('../services/staffService');
+const pushover = require('../services/pushoverService');
 const { buildCalendarCopy } = require('../lib/calendarCopy');
 
 const router = Router();
@@ -535,6 +536,12 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
     }
 
     logger.info({ bookingId: booking.id, adminId: req.admin.id }, 'Booking cancelled');
+
+    pushover.sendNotification({
+      title: 'Booking Cancelled',
+      message: `${booking.guest_name} - ${booking.venue_name || '-'}\nSlot: ${DateTime.fromJSDate(new Date(booking.slot_start), { zone: booking.guest_tz || 'Europe/Lisbon' }).toFormat('dd/MM HH:mm')}`,
+    });
+
     res.json({ message: 'Booking cancelled', booking });
   } catch (err) { next(err); }
 });
@@ -717,6 +724,13 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
     availabilityCache.clear();
 
     logger.info({ bookingId: id, oldStaffId, newStaffId: newStaff.id, adminId: req.admin.id }, 'Booking reassigned');
+
+    const oldStaffForPush = oldStaffId ? await staffService.getStaffById(oldStaffId).catch(() => null) : null;
+    pushover.sendNotification({
+      title: 'Booking Reassigned',
+      message: `${booking.guest_name} - ${booking.venue_name || '-'}\n${oldStaffForPush?.name || 'unassigned'} → ${newStaff.name}`,
+    });
+
     res.json({ message: 'Booking reassigned', booking: { ...booking, staff_member_id: newStaff.id, staff_name: newStaff.name } });
   } catch (err) { next(err); }
 });
