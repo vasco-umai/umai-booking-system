@@ -274,7 +274,8 @@ async function sendStaffNewBooking({
       <tr><td style="padding:8px 0;color:#71717A;">Guest</td><td style="padding:8px 0;">${escapeHtml(guestName)}</td></tr>
       <tr><td style="padding:8px 0;color:#71717A;">Email</td><td style="padding:8px 0;"><a href="mailto:${escapeHtml(guestEmail)}" style="color:#2BBCB3;">${escapeHtml(guestEmail)}</a></td></tr>
       ${guestPhone ? `<tr><td style="padding:8px 0;color:#71717A;">Phone</td><td style="padding:8px 0;">${escapeHtml(guestPhone)}</td></tr>` : ''}
-      ${venueName ? `<tr><td style="padding:8px 0;color:#71717A;">Venue</td><td style="padding:8px 0;">${escapeHtml(venueName)}${venueAddress ? `<br><span style="color:#71717A;">${escapeHtml(venueAddress)}</span>` : ''}</td></tr>` : ''}
+      ${venueName ? `<tr><td style="padding:8px 0;color:#71717A;">Venue</td><td style="padding:8px 0;">${escapeHtml(venueName)}</td></tr>` : ''}
+      ${venueAddress && meetingTypeLabel !== 'Online' && meetingTypeLabel !== 'Freemium' ? `<tr><td style="padding:8px 0;color:#71717A;">Address</td><td style="padding:8px 0;"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueAddress)}" style="color:#2BBCB3;text-decoration:none;">${escapeHtml(venueAddress)}</a></td></tr>` : ''}
       ${meetingTypeLabel ? `<tr><td style="padding:8px 0;color:#71717A;">Type</td><td style="padding:8px 0;">${escapeHtml(meetingTypeLabel)}</td></tr>` : ''}
       ${bookingId ? `<tr><td style="padding:8px 0;color:#71717A;">Booking ID</td><td style="padding:8px 0;color:#71717A;">#${escapeHtml(bookingId)}</td></tr>` : ''}
     </table>
