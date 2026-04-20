@@ -7,6 +7,7 @@ const { requireAdmin, requireRole, requireTeamLead, getEffectiveTeamId } = requi
 const calendarService = require('../services/calendarService');
 const emailService = require('../services/emailService');
 const staffService = require('../services/staffService');
+const pushover = require('../services/pushoverService');
 const { buildCalendarCopy } = require('../lib/calendarCopy');
 
 const router = Router();
@@ -535,6 +536,12 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
     }
 
     logger.info({ bookingId: booking.id, adminId: req.admin.id }, 'Booking cancelled');
+
+    pushover.sendNotification({
+      title: 'Booking Cancelled',
+      message: `${booking.guest_name} - ${booking.venue_name || '-'}\nSlot: ${DateTime.fromJSDate(booking.slot_start, { zone: booking.guest_tz || 'Europe/Lisbon' }).toFormat('dd/MM HH:mm')}`,
+    });
+
     res.json({ message: 'Booking cancelled', booking });
   } catch (err) { next(err); }
 });
@@ -577,6 +584,9 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
       return res.status(400).json({ error: 'Booking is already assigned to this staff member' });
     }
 
+    // Resolve old staff once, reused below for gcal token + pushover message
+    const oldStaff = oldStaffId ? await staffService.getStaffById(oldStaffId).catch(() => null) : null;
+
     // Update the booking
     await pool.query(
       'UPDATE bookings SET staff_member_id = $1, updated_at = NOW() WHERE id = $2',
@@ -585,12 +595,7 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
 
     // Delete old calendar event if exists
     if (booking.gcal_event_id) {
-      let oldStaffToken;
-      if (oldStaffId) {
-        const oldStaff = await staffService.getStaffById(oldStaffId);
-        if (oldStaff) oldStaffToken = oldStaff.google_refresh_token;
-      }
-      calendarService.deleteEvent(booking.gcal_event_id, undefined, oldStaffToken).catch(() => {});
+      calendarService.deleteEvent(booking.gcal_event_id, undefined, oldStaff?.google_refresh_token).catch(() => {});
     }
 
     // Build calendar copy (summary + description) in customer language
@@ -717,6 +722,12 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
     availabilityCache.clear();
 
     logger.info({ bookingId: id, oldStaffId, newStaffId: newStaff.id, adminId: req.admin.id }, 'Booking reassigned');
+
+    pushover.sendNotification({
+      title: 'Booking Reassigned',
+      message: `${booking.guest_name} - ${booking.venue_name || '-'}\n${oldStaff?.name || 'unassigned'} → ${newStaff.name}`,
+    });
+
     res.json({ message: 'Booking reassigned', booking: { ...booking, staff_member_id: newStaff.id, staff_name: newStaff.name } });
   } catch (err) { next(err); }
 });

@@ -7,6 +7,7 @@ const { availabilityCache } = require('../lib/cache');
 const calendarService = require('../services/calendarService');
 const emailService = require('../services/emailService');
 const staffService = require('../services/staffService');
+const pushover = require('../services/pushoverService');
 const { buildCalendarCopy } = require('../lib/calendarCopy');
 const { isValidEmail, stripHtml } = require('../middleware/validate');
 
@@ -155,6 +156,7 @@ router.post('/', async (req, res, next) => {
 
     // Create Google Calendar event (awaited so Vercel doesn't kill the function)
     let meetingLink = null;
+    let gcalFailed = false;
     try {
       const { eventId, hangoutLink, failed } = await calendarService.createEvent({
         summary,
@@ -172,17 +174,20 @@ router.post('/', async (req, res, next) => {
         meetingLink = hangoutLink || null;
         await pool.query('UPDATE bookings SET gcal_event_id = $1, gcal_sync_failed = false, meeting_link = $2 WHERE id = $3', [eventId, meetingLink, booking.id]);
       } else if (failed) {
+        gcalFailed = true;
         await pool.query('UPDATE bookings SET gcal_sync_failed = true WHERE id = $1', [booking.id]);
         logger.error({ bookingId: booking.id, staffName: assignedStaff?.name }, 'GCal sync failed for booking');
       }
     } catch (err) {
+      gcalFailed = true;
       await pool.query('UPDATE bookings SET gcal_sync_failed = true WHERE id = $1', [booking.id]);
       logger.error({ err, bookingId: booking.id }, 'GCal event creation failed');
     }
 
     // Send confirmation email (awaited so it completes before Vercel terminates)
+    let confirmationEmailSent = false;
     try {
-      const sent = await emailService.sendConfirmation({
+      confirmationEmailSent = await emailService.sendConfirmation({
         guestName: guest_name,
         guestEmail: guest_email,
         slotStart: slot_start,
@@ -193,8 +198,9 @@ router.post('/', async (req, res, next) => {
         meetingLink,
         lang,
       });
-      await pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [sent, booking.id]);
+      await pool.query('UPDATE bookings SET confirmation_email_sent = $1 WHERE id = $2', [confirmationEmailSent, booking.id]);
     } catch (err) {
+      confirmationEmailSent = false;
       await pool.query('UPDATE bookings SET confirmation_email_sent = false WHERE id = $1', [booking.id]);
       logger.error({ err, bookingId: booking.id }, 'Confirmation email failed');
     }
@@ -222,6 +228,22 @@ router.post('/', async (req, res, next) => {
       }
     }
 
+    // Pushover notification (fire-and-forget — pushoverService swallows its own errors)
+    const pushDateDisplay = start.setZone(guest_tz || 'Europe/Lisbon').toFormat('dd/MM HH:mm');
+    if (gcalFailed || !confirmationEmailSent) {
+      const issues = [gcalFailed && 'GCal sync failed', !confirmationEmailSent && 'Email failed'].filter(Boolean).join(', ');
+      pushover.sendNotification({
+        title: 'Booking Warning',
+        message: `${venue_name || guest_name} - ${pushDateDisplay}\nStaff: ${assignedStaff?.name || 'none'}\nIssues: ${issues}`,
+        priority: 1,
+      });
+    } else {
+      pushover.sendNotification({
+        title: 'New Booking',
+        message: `${venue_name || guest_name} - ${pushDateDisplay}\nStaff: ${assignedStaff?.name || 'unassigned'}\nPlan: ${plan || '-'}`,
+      });
+    }
+
     res.status(201).json({
       message: 'Booking confirmed',
       booking: {
@@ -235,6 +257,19 @@ router.post('/', async (req, res, next) => {
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
+
+    // Alert on hard failures so we don't silently lose bookings (fire-and-forget).
+    // Sanitize req.body fields: this is raw user input (sanitized locals aren't in scope here).
+    const safe = (v, max = 100) => stripHtml(String(v || '')).slice(0, max);
+    const failVenue = safe(req.body?.venue_name) || safe(req.body?.guest_name) || 'unknown';
+    const failSlot = safe(req.body?.slot_start, 40) || 'unknown';
+    const failErr = safe(err?.message, 200) || 'unknown error';
+    pushover.sendNotification({
+      title: 'Booking Failed',
+      message: `${failVenue}\nSlot: ${failSlot}\nError: ${failErr}`,
+      priority: 1,
+    });
+
     next(err);
   } finally {
     client.release();
