@@ -9,6 +9,7 @@ const emailService = require('../services/emailService');
 const staffService = require('../services/staffService');
 const pushover = require('../services/pushoverService');
 const { buildCalendarCopy } = require('../lib/calendarCopy');
+const { bookingSlotLockKey } = require('../lib/bookingLock');
 
 const router = Router();
 
@@ -298,10 +299,13 @@ router.get('/staff', requireTeamLead, async (req, res, next) => {
 // POST /api/admin/staff
 router.post('/staff', requireTeamLead, async (req, res, next) => {
   try {
-    const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings } = req.body;
+    const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings, timezone } = req.body;
     const teamId = getEffectiveTeamId(req);
     if (!name || !email) {
       return res.status(400).json({ error: 'name and email are required' });
+    }
+    if (timezone && !staffService.isValidTimezone(timezone)) {
+      return res.status(400).json({ error: 'Invalid IANA timezone', code: 'INVALID_TIMEZONE' });
     }
     const staff = await staffService.createStaff({
       name,
@@ -310,6 +314,7 @@ router.post('/staff', requireTeamLead, async (req, res, next) => {
       googleCalendarId: google_calendar_id || null,
       isActive: is_active !== false,
       maxDailyMeetings: max_daily_meetings || 0,
+      timezone: timezone || null,
       teamId,
     });
     res.status(201).json(staff);
@@ -333,7 +338,10 @@ router.post('/staff/:id/invite', requireTeamLead, async (req, res, next) => {
 // PUT /api/admin/staff/:id
 router.put('/staff/:id', requireTeamLead, async (req, res, next) => {
   try {
-    const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings } = req.body;
+    const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings, timezone } = req.body;
+    if (timezone && !staffService.isValidTimezone(timezone)) {
+      return res.status(400).json({ error: 'Invalid IANA timezone', code: 'INVALID_TIMEZONE' });
+    }
     const staff = await staffService.updateStaff(req.params.id, {
       name,
       email,
@@ -341,6 +349,7 @@ router.put('/staff/:id', requireTeamLead, async (req, res, next) => {
       googleCalendarId: google_calendar_id,
       isActive: is_active,
       maxDailyMeetings: max_daily_meetings,
+      timezone: timezone || undefined,
     });
     if (!staff) return res.status(404).json({ error: 'Staff member not found' });
     res.json(staff);
@@ -546,20 +555,87 @@ router.put('/bookings/:id/cancel', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/admin/bookings/:id/eligible-staff
+// Returns the candidate pool for reassigning a booking: only staff who are
+//   (1) on the meeting type's rotation (staff_meeting_weights.weight > 0)
+//   (2) active on the same team
+//   (3) free at the booking's slot (schedule + existing booking + gcal freebusy)
+// and are NOT the booking's current assignee. Hides ineligible or busy staff
+// so the admin UI can't offer an invalid reassign target.
+router.get('/bookings/:id/eligible-staff', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid booking id' });
+    }
+    const teamId = getEffectiveTeamId(req);
+
+    const { rows: bookingRows } = await pool.query(
+      `SELECT id, staff_member_id, meeting_type_id, slot_start, slot_end
+       FROM bookings
+       WHERE id = $1 AND status = 'confirmed' AND team_id = $2`,
+      [id, teamId]
+    );
+    if (bookingRows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found or not confirmed' });
+    }
+    const booking = bookingRows[0];
+
+    // When a booking has a meeting type, filter by the rotation (staff_meeting_weights).
+    // Legacy bookings without meeting_type_id fall back to "all active team staff" — they
+    // predate per-meeting-type rotations and we don't want to brick their reassign UI.
+    let eligible;
+    if (booking.meeting_type_id) {
+      eligible = await staffService.getEligibleStaffForMeetingType(booking.meeting_type_id, teamId);
+    } else {
+      eligible = await staffService.getAllStaff(teamId);
+      eligible = eligible.filter((s) => s.is_active);
+    }
+    const candidates = eligible.filter((s) => s.id !== booking.staff_member_id);
+
+    const slotStartIso = booking.slot_start.toISOString();
+    const slotEndIso = booking.slot_end.toISOString();
+
+    // Batched busy check: ONE schedules query + ONE bookings query + ONE gcal freebusy call
+    // across all candidates. Previously looped per-candidate (N+1 network calls to Google).
+    const busyMap = await staffService.isStaffBusyAtSlotBatch(candidates, slotStartIso, slotEndIso, {
+      excludeBookingId: booking.id,
+    });
+    const available = candidates
+      .filter((s) => busyMap[s.id] && !busyMap[s.id].busy)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        email: s.email,
+        timezone: s.timezone || 'Europe/Lisbon',
+        googleConnected: !!s.google_refresh_token,
+      }));
+    res.json(available);
+  } catch (err) { next(err); }
+});
+
 // PUT /api/admin/bookings/:id/reassign
 router.put('/bookings/:id/reassign', async (req, res, next) => {
+  const client = await pool.connect();
+  let txOpen = false;
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid booking id' });
+    }
     const { staff_member_id } = req.body;
-
     if (!staff_member_id) {
       return res.status(400).json({ error: 'staff_member_id is required', code: 'MISSING_FIELDS' });
+    }
+    const newStaffId = parseInt(staff_member_id, 10);
+    if (!Number.isInteger(newStaffId) || newStaffId <= 0) {
+      return res.status(400).json({ error: 'Invalid staff_member_id', code: 'INVALID_STAFF' });
     }
 
     const teamId = getEffectiveTeamId(req);
 
     // Get the booking
-    const { rows: bookingRows } = await pool.query(
+    const { rows: bookingRows } = await client.query(
       `SELECT b.*, mt.label as meeting_type_label, mt.name as meeting_type_name
        FROM bookings b
        LEFT JOIN meeting_types mt ON b.meeting_type_id = mt.id
@@ -574,9 +650,10 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
     const booking = bookingRows[0];
     const oldStaffId = booking.staff_member_id;
 
-    // Validate new staff member
-    const newStaff = await staffService.getStaffById(parseInt(staff_member_id, 10));
-    if (!newStaff || !newStaff.is_active) {
+    // Validate new staff member. Cross-team and not-found collapse into the same
+    // response so a team-lead can't enumerate staff in other tenants by probing ids.
+    const newStaff = await staffService.getStaffById(newStaffId);
+    if (!newStaff || !newStaff.is_active || newStaff.team_id !== teamId) {
       return res.status(400).json({ error: 'Staff member not found or inactive', code: 'INVALID_STAFF' });
     }
 
@@ -584,14 +661,57 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
       return res.status(400).json({ error: 'Booking is already assigned to this staff member' });
     }
 
+    // Transaction + advisory lock: the eligibility and availability checks below
+    // are TOCTOU-sensitive. Without a lock, a concurrent POST /bookings could land
+    // on the same slot for newStaff between our busy check and the UPDATE.
+    // Lock key matches the POST /bookings pattern (hash of slot bounds), so
+    // concurrent create + reassign for the same slot serialize.
+    await client.query('BEGIN');
+    txOpen = true;
+    // Same lock key as POST /bookings — normalized through bookingSlotLockKey —
+    // so a concurrent booking creation on this slot serializes with this reassign.
+    const lockKey = bookingSlotLockKey(booking.slot_start, booking.slot_end);
+    await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
+
+    // Server-side re-check: the UI hides ineligible/busy staff, but the PUT must
+    // still enforce the same rules — direct API calls (or stale modal state)
+    // must not bypass them. Team scoping was enforced pre-transaction above.
+    if (booking.meeting_type_id) {
+      const eligible = await staffService.getEligibleStaffForMeetingType(booking.meeting_type_id, teamId);
+      if (!eligible.some((s) => s.id === newStaff.id)) {
+        await client.query('ROLLBACK'); txOpen = false;
+        return res.status(400).json({
+          error: 'Staff member is not eligible for this meeting type',
+          code: 'INELIGIBLE_STAFF',
+        });
+      }
+    }
+    const { busy, reason } = await staffService.isStaffBusyAtSlot(
+      newStaff,
+      booking.slot_start.toISOString(),
+      booking.slot_end.toISOString(),
+      { excludeBookingId: booking.id }
+    );
+    if (busy) {
+      await client.query('ROLLBACK'); txOpen = false;
+      return res.status(400).json({
+        error: 'Staff member is not available at this time',
+        code: 'STAFF_UNAVAILABLE',
+        reason,
+      });
+    }
+
     // Resolve old staff once, reused below for gcal token + pushover message
     const oldStaff = oldStaffId ? await staffService.getStaffById(oldStaffId).catch(() => null) : null;
 
-    // Update the booking
-    await pool.query(
+    // Update the booking — still under the same advisory lock so no concurrent
+    // create can grab this slot between busy check and UPDATE.
+    await client.query(
       'UPDATE bookings SET staff_member_id = $1, updated_at = NOW() WHERE id = $2',
       [newStaff.id, id]
     );
+    await client.query('COMMIT');
+    txOpen = false;
 
     // Delete old calendar event if exists
     if (booking.gcal_event_id) {
@@ -729,7 +849,14 @@ router.put('/bookings/:id/reassign', async (req, res, next) => {
     });
 
     res.json({ message: 'Booking reassigned', booking: { ...booking, staff_member_id: newStaff.id, staff_name: newStaff.name } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (txOpen) {
+      try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+    }
+    next(err);
+  } finally {
+    client.release();
+  }
 });
 
 // POST /api/admin/bookings/:id/resend-confirmation

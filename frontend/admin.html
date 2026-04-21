@@ -1043,6 +1043,11 @@ tbody tr:hover{background:var(--card)}
                   </div>
                 </div>
               </div>
+              <div class="if-group">
+                <label>Timezone</label>
+                <input class="if-input" type="text" id="stf-timezone" list="stf-tz-list" placeholder="Europe/Lisbon">
+                <datalist id="stf-tz-list"></datalist>
+              </div>
             </div>
             <div class="if-actions">
               <button class="btn-sm btn-sm-teal" id="staffSubmitBtn">Save Staff</button>
@@ -2650,6 +2655,25 @@ const addStaffBtn     = $('#addStaffBtn');
 const staffSubmitBtn  = $('#staffSubmitBtn');
 const staffCancelBtn  = $('#staffCancelBtn');
 
+// Populate timezone datalist once — browsers with Intl.supportedValuesOf('timeZone') get the full list;
+// older browsers fall back to a short curated set covering UMAI's likely staff locations.
+(function populateTimezones() {
+  const dl = document.getElementById('stf-tz-list');
+  if (!dl) return;
+  let zones;
+  try {
+    zones = (Intl.supportedValuesOf && Intl.supportedValuesOf('timeZone')) || null;
+  } catch { zones = null; }
+  if (!zones) {
+    zones = [
+      'Europe/Lisbon', 'Europe/London', 'Europe/Madrid', 'Europe/Paris', 'Europe/Berlin', 'Europe/Copenhagen',
+      'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Sao_Paulo',
+      'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney',
+    ];
+  }
+  dl.innerHTML = zones.map((z) => `<option value="${z}">`).join('');
+})();
+
 async function loadStaff() {
   staffBody.innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>';
   try {
@@ -2726,6 +2750,9 @@ addStaffBtn.addEventListener('click', () => {
   $('#stf-pct').value = '100';
   $('#stf-max-daily').value = '0';
   $('#stf-gcal').value = '';
+  // Default new staff timezone to the admin's browser tz — best guess for their location
+  try { $('#stf-timezone').value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Lisbon'; }
+  catch { $('#stf-timezone').value = 'Europe/Lisbon'; }
   setDrop('stf-active', 'true');
   $('#stf-gcal-group').style.display = 'none';
   staffForm.classList.add('open');
@@ -2752,6 +2779,7 @@ window.editStaff = function(id) {
   $('#stf-pct').value = s.meetingPct != null ? s.meetingPct : (s.meeting_pct != null ? s.meeting_pct : 100);
   $('#stf-max-daily').value = s.maxDailyMeetings != null ? s.maxDailyMeetings : (s.max_daily_meetings != null ? s.max_daily_meetings : 0);
   $('#stf-gcal').value = s.googleCalendarId || s.google_calendar_id || '';
+  $('#stf-timezone').value = s.timezone || 'Europe/Lisbon';
   setDrop('stf-active', String(s.isActive ?? s.is_active ?? true));
 
   // Show Google Calendar connection section
@@ -2874,7 +2902,8 @@ staffSubmitBtn.addEventListener('click', async () => {
     email,
     meeting_pct: parseInt($('#stf-pct').value, 10) || 0,
     max_daily_meetings: parseInt($('#stf-max-daily').value, 10) || 0,
-    is_active: getDrop('stf-active') === 'true'
+    is_active: getDrop('stf-active') === 'true',
+    timezone: ($('#stf-timezone').value || '').trim() || undefined,
   };
   // Include team_id when adding staff from a team card
   if (currentTeamIdForStaff && !editingStaffId) {
@@ -3109,42 +3138,52 @@ const reassignMsg        = $('#reassignMsg');
 const reassignCancelBtn  = $('#reassignCancelBtn');
 const reassignConfirmBtn = $('#reassignConfirmBtn');
 let pendingReassignId = null;
+let pendingReassignCandidates = [];
 
 window.reassignBooking = async function(id) {
   closeAllRowActions();
   pendingReassignId = id;
-  // Ensure staff list is loaded
-  if (!staffMembers || staffMembers.length === 0) {
-    try {
-      staffMembers = await apiFetch('/api/admin/staff');
-    } catch (err) {
-      showToast('Failed to load staff list', 'error');
-      return;
-    }
-  }
-  const entry = bookings.find(b => String(b._id || b.id) === String(id));
-  const currentStaffId = entry ? (entry.staffMemberId || entry.staff_member_id) : null;
-  const options = (staffMembers || [])
-    .filter(s => s.isActive !== false && s.is_active !== false)
-    .filter(s => String(s.id) !== String(currentStaffId))
-    .map(s => {
-      const connected = s.googleRefreshToken || s.google_refresh_token;
-      const suffix = connected ? '' : ' (no Google — Meet link will not be generated)';
-      return `<option value="${s.id}">${escHtml(s.name)}${suffix}</option>`;
-    });
-  if (options.length === 0) {
-    showToast('No other staff members available to reassign to', 'error');
+
+  // Ask the server for candidates who are BOTH eligible for this booking's meeting type
+  // AND free at its slot. The endpoint excludes the current assignee. Anything outside
+  // that set is hidden per product decision — admins should never see someone they
+  // can't actually hand the meeting to.
+  let candidates;
+  try {
+    candidates = await apiFetch(`/api/admin/bookings/${id}/eligible-staff`);
+  } catch (err) {
+    showToast(err.message || 'Failed to load eligible staff', 'error');
     return;
   }
+
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    showToast('No eligible staff are free at this time. Consider rescheduling first.', 'error');
+    return;
+  }
+
+  pendingReassignCandidates = candidates;
+  const entry = bookings.find(b => String(b._id || b.id) === String(id));
+  const options = candidates.map((s) => {
+    const suffix = s.googleConnected ? '' : ' (no Google — Meet link will not be generated)';
+    return `<option value="${s.id}">${escHtml(s.name)}${suffix}</option>`;
+  });
   reassignSelect.innerHTML = options.join('');
   const currentName = entry && entry.staffName ? entry.staffName : 'unassigned';
   reassignMsg.textContent = `Currently assigned to ${currentName}. Pick a new staff member — they'll get a new calendar invite and Meet link.`;
   reassignOverlay.classList.add('open');
 };
 
-reassignCancelBtn.onclick = () => { reassignOverlay.classList.remove('open'); pendingReassignId = null; };
+reassignCancelBtn.onclick = () => {
+  reassignOverlay.classList.remove('open');
+  pendingReassignId = null;
+  pendingReassignCandidates = [];
+};
 reassignOverlay.addEventListener('click', e => {
-  if (e.target === reassignOverlay) { reassignOverlay.classList.remove('open'); pendingReassignId = null; }
+  if (e.target === reassignOverlay) {
+    reassignOverlay.classList.remove('open');
+    pendingReassignId = null;
+    pendingReassignCandidates = [];
+  }
 });
 
 reassignConfirmBtn.onclick = async () => {
@@ -3161,13 +3200,15 @@ reassignConfirmBtn.onclick = async () => {
       body: JSON.stringify({ staff_member_id: parseInt(newStaffId, 10) }),
     });
     showToast('Booking reassigned');
-    // Update local state
+    // Update local state — look up in the candidates just shown; fall back to staffMembers cache.
     const entry = bookings.find(b => String(b._id || b.id) === String(id));
-    const newStaff = staffMembers.find(s => String(s.id) === String(newStaffId));
+    const newStaff = pendingReassignCandidates.find(s => String(s.id) === String(newStaffId))
+      || (staffMembers || []).find(s => String(s.id) === String(newStaffId));
     if (entry && newStaff) {
       entry.staffMemberId = newStaff.id;
       entry.staffName = newStaff.name;
     }
+    pendingReassignCandidates = [];
     renderBookings();
   } catch (err) {
     showToast(err.message || 'Failed to reassign booking', 'error');

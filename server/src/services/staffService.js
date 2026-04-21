@@ -81,12 +81,12 @@ async function getStaffById(id) {
  * @param {boolean} [data.isActive=true]
  * @returns {object} The created staff row.
  */
-async function createStaff({ name, email, meetingPct = 100, googleCalendarId = null, isActive = true, maxDailyMeetings = 0, teamId }) {
+async function createStaff({ name, email, meetingPct = 100, googleCalendarId = null, isActive = true, maxDailyMeetings = 0, timezone = null, teamId }) {
   const { rows } = await pool.query(
-    `INSERT INTO staff_members (name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings, team_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO staff_members (name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings, timezone, team_id)
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'Europe/Lisbon'), $8)
      RETURNING *`,
-    [name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings || 0, teamId]
+    [name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings || 0, timezone, teamId]
   );
 
   // Also create an admin_users login so the team member can log in
@@ -133,7 +133,7 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
  * @param {boolean} [data.isActive]
  * @returns {object|null} The updated row, or null if not found.
  */
-async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings }) {
+async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings, timezone }) {
   const { rows } = await pool.query(
     `UPDATE staff_members
      SET name               = COALESCE($2, name),
@@ -142,10 +142,11 @@ async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isAc
          google_calendar_id = COALESCE($5, google_calendar_id),
          is_active          = COALESCE($6, is_active),
          max_daily_meetings = COALESCE($7, max_daily_meetings),
+         timezone           = COALESCE($8, timezone),
          updated_at         = NOW()
      WHERE id = $1
      RETURNING *`,
-    [id, name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings != null ? maxDailyMeetings : undefined]
+    [id, name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings != null ? maxDailyMeetings : undefined, timezone || null]
   );
   return rows[0] || null;
 }
@@ -481,6 +482,269 @@ async function regenerateInviteToken(staffId) {
   return inviteToken;
 }
 
+/**
+ * Validate an IANA timezone string (e.g. "Europe/Lisbon", "America/New_York").
+ * Returns true if Luxon can resolve the zone.
+ */
+function isValidTimezone(tz) {
+  if (!tz || typeof tz !== 'string') return false;
+  return DateTime.now().setZone(tz).isValid;
+}
+
+/**
+ * Get staff members eligible for a given meeting type on a given team.
+ *
+ * Eligibility rules:
+ *   - staff.is_active = true
+ *   - staff.team_id = teamId
+ *   - staff has a row in staff_meeting_weights for this meeting_type_id with weight > 0
+ *
+ * Intent: used by the admin reassign flow to narrow the candidate list to people
+ * who are actually on the rotation for the booking's meeting type. Availability
+ * (schedule + calendar + DB bookings) is layered on top via isStaffBusyAtSlot.
+ */
+async function getEligibleStaffForMeetingType(meetingTypeId, teamId) {
+  const { rows } = await pool.query(
+    `SELECT sm.* FROM staff_members sm
+     JOIN staff_meeting_weights smw
+       ON smw.staff_member_id = sm.id
+      AND smw.meeting_type_id = $1
+      AND smw.weight > 0
+     WHERE sm.is_active = true
+       AND sm.team_id = $2
+     ORDER BY sm.name`,
+    [meetingTypeId, teamId]
+  );
+  return rows;
+}
+
+/**
+ * Check whether a single staff member is busy during [slotStart, slotEnd].
+ *
+ * Mirrors the busy-check inside selectStaffForSlot but for one staff and one
+ * slot. Returns { busy: boolean, reason: string|null } so callers can explain
+ * why someone is unavailable.
+ *
+ * Reasons: 'outside-schedule', 'existing-booking', 'gcal-conflict', 'gcal-unavailable'.
+ *
+ * @param {object} staff       Full staff row (needs id, google_refresh_token).
+ * @param {string} slotStartIso ISO 8601
+ * @param {string} slotEndIso   ISO 8601
+ * @param {object} [opts]
+ * @param {number} [opts.excludeBookingId] Bookings to ignore in the DB overlap check
+ *        (e.g. the booking currently being reassigned — it's expected to overlap).
+ * @param {number} [opts.bufferMinutes=0]  Buffer minutes applied on each side.
+ */
+async function isStaffBusyAtSlot(staff, slotStartIso, slotEndIso, { excludeBookingId = null, bufferMinutes = 0 } = {}) {
+  const slotStartDt = DateTime.fromISO(slotStartIso, { zone: 'utc' });
+  const slotEndDt = DateTime.fromISO(slotEndIso, { zone: 'utc' });
+  const slotStartMs = slotStartDt.toMillis();
+  const slotEndMs = slotEndDt.toMillis();
+  const bufferMs = bufferMinutes * 60 * 1000;
+
+  // 1. Schedule window — staff-specific schedule takes precedence, else global
+  const { rows: schedRows } = await pool.query(
+    `SELECT * FROM schedules
+     WHERE is_active = true
+       AND (staff_member_id = $1 OR staff_member_id IS NULL)`,
+    [staff.id]
+  );
+  const perStaffScheds = schedRows.filter((s) => s.staff_member_id === staff.id);
+  const effectiveScheds = perStaffScheds.length > 0 ? perStaffScheds : schedRows.filter((s) => s.staff_member_id === null);
+
+  const scheduleCovers = effectiveScheds.some((sched) => {
+    const slotInTz = slotStartDt.setZone(sched.timezone);
+    const dow = slotInTz.weekday === 7 ? 0 : slotInTz.weekday;
+    if (dow !== sched.day_of_week) return false;
+    const schedStart = DateTime.fromISO(slotInTz.toISODate(), { zone: sched.timezone }).set({
+      hour: parseInt(sched.start_time.split(':')[0], 10),
+      minute: parseInt(sched.start_time.split(':')[1], 10),
+      second: 0, millisecond: 0,
+    });
+    const schedEnd = DateTime.fromISO(slotInTz.toISODate(), { zone: sched.timezone }).set({
+      hour: parseInt(sched.end_time.split(':')[0], 10),
+      minute: parseInt(sched.end_time.split(':')[1], 10),
+      second: 0, millisecond: 0,
+    });
+    return slotStartDt.toMillis() >= schedStart.toMillis() && slotEndDt.toMillis() <= schedEnd.toMillis();
+  });
+
+  if (!scheduleCovers) return { busy: true, reason: 'outside-schedule' };
+
+  // 2. DB bookings conflict (excluding the booking being reassigned, if any)
+  const params = [staff.id, new Date(slotEndMs), new Date(slotStartMs)];
+  let bookingQuery = `SELECT id FROM bookings
+     WHERE staff_member_id = $1 AND status = 'confirmed'
+       AND slot_start < $2 AND slot_end > $3`;
+  if (excludeBookingId != null) {
+    const exId = Number(excludeBookingId);
+    if (!Number.isFinite(exId) || !Number.isInteger(exId)) {
+      throw new Error('isStaffBusyAtSlot: excludeBookingId must be an integer');
+    }
+    bookingQuery += ' AND id <> $4';
+    params.push(exId);
+  }
+  const { rows: overlaps } = await pool.query(bookingQuery, params);
+  if (overlaps.length > 0) return { busy: true, reason: 'existing-booking' };
+
+  // 3. Google Calendar freebusy (only if staff has OAuth token — otherwise we can't verify)
+  if (staff.google_refresh_token) {
+    try {
+      const windowStart = slotStartDt.startOf('day').toISO();
+      const windowEnd = slotEndDt.endOf('day').toISO();
+      const busyResult = await calendarService.getStaffBusyTimes([staff], windowStart, windowEnd);
+      if (busyResult.errors && busyResult.errors[staff.id]) {
+        return { busy: true, reason: 'gcal-unavailable' };
+      }
+      const busyTimes = (busyResult.busy && busyResult.busy[staff.id]) || [];
+      const conflict = busyTimes.some((b) => {
+        const busyStart = DateTime.fromISO(b.start).toMillis();
+        const busyEnd = DateTime.fromISO(b.end).toMillis();
+        return slotStartMs < (busyEnd + bufferMs) && slotEndMs > (busyStart - bufferMs);
+      });
+      if (conflict) return { busy: true, reason: 'gcal-conflict' };
+    } catch (err) {
+      logger.warn({ err, staffId: staff.id }, '[isStaffBusyAtSlot] gcal freebusy failed');
+      return { busy: true, reason: 'gcal-unavailable' };
+    }
+  }
+
+  return { busy: false, reason: null };
+}
+
+/**
+ * Batched version of isStaffBusyAtSlot for rendering the reassign modal.
+ *
+ * One schedules query + one DB-overlap query + ONE gcal freebusy call for all
+ * gcal-connected staff, versus N of each in the single-staff helper. Returns a
+ * map keyed by staff id: { [staffId]: { busy, reason } }.
+ *
+ * Reasons mirror isStaffBusyAtSlot. Staff without a gcal token skip the gcal
+ * check (same behaviour as the single-staff path).
+ */
+async function isStaffBusyAtSlotBatch(staffList, slotStartIso, slotEndIso, { excludeBookingId = null, bufferMinutes = 0 } = {}) {
+  const result = {};
+  if (!staffList || staffList.length === 0) return result;
+
+  const slotStartDt = DateTime.fromISO(slotStartIso, { zone: 'utc' });
+  const slotEndDt = DateTime.fromISO(slotEndIso, { zone: 'utc' });
+  const slotStartMs = slotStartDt.toMillis();
+  const slotEndMs = slotEndDt.toMillis();
+  const bufferMs = bufferMinutes * 60 * 1000;
+
+  const staffIds = staffList.map((s) => s.id);
+
+  // 1. Schedules (per-staff + global) in one query
+  const { rows: allScheds } = await pool.query(
+    `SELECT * FROM schedules
+     WHERE is_active = true
+       AND (staff_member_id = ANY($1) OR staff_member_id IS NULL)`,
+    [staffIds]
+  );
+  const staffScheds = {};
+  const globalScheds = [];
+  for (const s of allScheds) {
+    if (s.staff_member_id) {
+      (staffScheds[s.staff_member_id] ||= []).push(s);
+    } else {
+      globalScheds.push(s);
+    }
+  }
+
+  const scheduleCovers = (staff) => {
+    const scheds = (staffScheds[staff.id] && staffScheds[staff.id].length > 0) ? staffScheds[staff.id] : globalScheds;
+    return scheds.some((sched) => {
+      const slotInTz = slotStartDt.setZone(sched.timezone);
+      const dow = slotInTz.weekday === 7 ? 0 : slotInTz.weekday;
+      if (dow !== sched.day_of_week) return false;
+      const schedStart = DateTime.fromISO(slotInTz.toISODate(), { zone: sched.timezone }).set({
+        hour: parseInt(sched.start_time.split(':')[0], 10),
+        minute: parseInt(sched.start_time.split(':')[1], 10),
+        second: 0, millisecond: 0,
+      });
+      const schedEnd = DateTime.fromISO(slotInTz.toISODate(), { zone: sched.timezone }).set({
+        hour: parseInt(sched.end_time.split(':')[0], 10),
+        minute: parseInt(sched.end_time.split(':')[1], 10),
+        second: 0, millisecond: 0,
+      });
+      return slotStartMs >= schedStart.toMillis() && slotEndMs <= schedEnd.toMillis();
+    });
+  };
+
+  const stillEligible = [];
+  for (const staff of staffList) {
+    if (!scheduleCovers(staff)) {
+      result[staff.id] = { busy: true, reason: 'outside-schedule' };
+    } else {
+      stillEligible.push(staff);
+    }
+  }
+  if (stillEligible.length === 0) return result;
+
+  // 2. DB bookings overlap for remaining candidates in one query
+  const remainingIds = stillEligible.map((s) => s.id);
+  const overlapParams = [remainingIds, new Date(slotEndMs), new Date(slotStartMs)];
+  let overlapQuery = `SELECT staff_member_id FROM bookings
+     WHERE staff_member_id = ANY($1) AND status = 'confirmed'
+       AND slot_start < $2 AND slot_end > $3`;
+  if (excludeBookingId != null) {
+    const exId = Number(excludeBookingId);
+    if (!Number.isFinite(exId) || !Number.isInteger(exId)) {
+      throw new Error('isStaffBusyAtSlotBatch: excludeBookingId must be an integer');
+    }
+    overlapQuery += ' AND id <> $4';
+    overlapParams.push(exId);
+  }
+  const { rows: overlapRows } = await pool.query(overlapQuery, overlapParams);
+  const dbBusyIds = new Set(overlapRows.map((r) => r.staff_member_id));
+
+  const afterDbCheck = [];
+  for (const staff of stillEligible) {
+    if (dbBusyIds.has(staff.id)) {
+      result[staff.id] = { busy: true, reason: 'existing-booking' };
+    } else {
+      afterDbCheck.push(staff);
+    }
+  }
+  if (afterDbCheck.length === 0) return result;
+
+  // 3. Gcal freebusy in one batched call. Staff without OAuth tokens are trusted
+  //    (we can't verify them, but the schedule + DB check is the most we can do).
+  const gcalStaff = afterDbCheck.filter((s) => s.google_refresh_token);
+  const nonGcalStaff = afterDbCheck.filter((s) => !s.google_refresh_token);
+  for (const s of nonGcalStaff) {
+    result[s.id] = { busy: false, reason: null };
+  }
+
+  if (gcalStaff.length > 0) {
+    const windowStart = slotStartDt.startOf('day').toISO();
+    const windowEnd = slotEndDt.endOf('day').toISO();
+    try {
+      const busyResult = await calendarService.getStaffBusyTimes(gcalStaff, windowStart, windowEnd);
+      for (const s of gcalStaff) {
+        if (busyResult.errors && busyResult.errors[s.id]) {
+          result[s.id] = { busy: true, reason: 'gcal-unavailable' };
+          continue;
+        }
+        const busyTimes = (busyResult.busy && busyResult.busy[s.id]) || [];
+        const conflict = busyTimes.some((b) => {
+          const bs = DateTime.fromISO(b.start).toMillis();
+          const be = DateTime.fromISO(b.end).toMillis();
+          return slotStartMs < (be + bufferMs) && slotEndMs > (bs - bufferMs);
+        });
+        result[s.id] = conflict ? { busy: true, reason: 'gcal-conflict' } : { busy: false, reason: null };
+      }
+    } catch (err) {
+      logger.warn({ err, staffIds: gcalStaff.map((s) => s.id) }, '[isStaffBusyAtSlotBatch] gcal freebusy failed');
+      for (const s of gcalStaff) {
+        result[s.id] = { busy: true, reason: 'gcal-unavailable' };
+      }
+    }
+  }
+
+  return result;
+}
+
 module.exports = {
   getAllStaff,
   getActiveStaffWithCalendar,
@@ -490,4 +754,8 @@ module.exports = {
   deleteStaff,
   selectStaffForSlot,
   regenerateInviteToken,
+  isValidTimezone,
+  getEligibleStaffForMeetingType,
+  isStaffBusyAtSlot,
+  isStaffBusyAtSlotBatch,
 };
