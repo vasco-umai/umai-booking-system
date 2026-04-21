@@ -1,0 +1,272 @@
+openapi: 3.1.0
+info:
+  title: UMAI Booking — Public API
+  version: "1.0.0"
+  description: |
+    Server-to-server API for creating UMAI meeting bookings from trusted
+    consumers (e.g. AI voice-calling agents, partner integrations).
+
+    The API auto-assigns a sales rep from the team the key is scoped to, syncs
+    the meeting to the rep's Google Calendar, and sends the guest a
+    confirmation email — the consumer only provides the slot and guest info.
+
+    **Authentication.** All endpoints (except `/openapi.yaml` and `/health`)
+    require an API key in the `Authorization: Bearer <key>` header. Keys are
+    team-scoped — a key issued for team A cannot read or write team B.
+
+    **Idempotency.** `POST /bookings` requires an `Idempotency-Key` header
+    (UUID). Repeating the same key with the same body within 24h returns the
+    original response — use this to guard against network retries so voice
+    agents never double-book.
+
+    **Timezones.** All slot timestamps are ISO-8601 in UTC. `tz` parameters
+    are IANA strings (e.g. `Europe/Lisbon`, `America/New_York`).
+
+servers:
+  - url: https://umai-booking.vercel.app/api/public
+    description: Production
+  - url: http://localhost:3001/api/public
+    description: Local development
+
+security:
+  - apiKeyAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Health probe
+      description: Unauthenticated liveness check.
+      security: []
+      responses:
+        "200":
+          description: API is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  api: { type: string, example: public }
+                  version: { type: string, example: "1" }
+
+  /availability/meeting-types:
+    get:
+      summary: List meeting types
+      description: |
+        Returns every active meeting type for the API key's team. The AI agent
+        calls this once at setup time to learn which `meeting_type_id` values
+        it can use in `/availability` and `/bookings`.
+      responses:
+        "200":
+          description: Meeting types for the key's team.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  meeting_types:
+                    type: array
+                    items: { $ref: "#/components/schemas/MeetingType" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /availability:
+    get:
+      summary: List available slots
+      description: |
+        Returns all free slots on a given date for a meeting type, in the
+        caller's timezone. Availability takes into account every eligible
+        sales rep's Google Calendar, working hours, buffers, and daily
+        meeting caps.
+
+        A slot is returned if **any** eligible rep is free — the rep is
+        chosen at booking time, not here.
+      parameters:
+        - name: meeting_type_id
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+          description: From `GET /availability/meeting-types`.
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+          description: Day to look up (YYYY-MM-DD in the caller's tz).
+        - name: tz
+          in: query
+          required: true
+          schema: { type: string, example: Europe/Lisbon }
+          description: IANA timezone for interpreting `date` and formatting slots.
+      responses:
+        "200":
+          description: Available slots.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date: { type: string, example: "2026-04-22" }
+                  timezone: { type: string, example: "Europe/Lisbon" }
+                  meeting_type_id: { type: integer, example: 3 }
+                  duration_minutes: { type: integer, example: 30 }
+                  slots:
+                    type: array
+                    items: { $ref: "#/components/schemas/Slot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /bookings:
+    post:
+      summary: Create a booking
+      description: |
+        Creates a confirmed booking for a guest at the given slot. The server:
+          1. Auto-assigns an available sales rep (weighted distribution).
+          2. Checks for conflicting bookings with buffer.
+          3. Inserts the booking, creates the Google Calendar event, and
+             sends the guest a confirmation email.
+
+        **Always send an `Idempotency-Key` header** (any UUID). On retry, the
+        same key with the same body replays the original response.
+
+        Returns 409 if the slot is no longer available or if no rep is free.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBookingRequest" }
+      responses:
+        "201":
+          description: Booking created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            Conflict. Possible causes:
+            - `SLOT_CONFLICT` — the slot filled up since availability was fetched.
+            - `IDEMPOTENCY_KEY_CONFLICT` — the key was reused with a different body.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: umai_live_…
+
+  responses:
+    BadRequest:
+      description: Invalid request (missing / malformed fields).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Forbidden:
+      description: API key was revoked.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: The meeting type does not exist for this team.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  schemas:
+    MeetingType:
+      type: object
+      properties:
+        id: { type: integer, example: 3 }
+        name: { type: string, example: onboarding }
+        label: { type: string, example: "Onboarding Call" }
+        duration_minutes: { type: integer, example: 30 }
+        buffer_minutes: { type: integer, example: 5 }
+        min_advance_minutes: { type: integer, example: 60 }
+        plans:
+          type: array
+          items: { type: string }
+          example: [mini, pro]
+      required: [id, name, label, duration_minutes]
+
+    Slot:
+      type: object
+      properties:
+        slot_start: { type: string, format: date-time, example: "2026-04-22T14:00:00Z" }
+        slot_end: { type: string, format: date-time, example: "2026-04-22T14:30:00Z" }
+      required: [slot_start, slot_end]
+
+    CreateBookingRequest:
+      type: object
+      required: [meeting_type_id, slot_start, guest_name, guest_email, guest_tz]
+      properties:
+        meeting_type_id: { type: integer, example: 3 }
+        slot_start:
+          type: string
+          format: date-time
+          example: "2026-04-22T14:00:00Z"
+          description: ISO-8601 slot start (from `/availability`). `slot_end` is derived server-side from the meeting type's duration.
+        guest_name: { type: string, example: "Maria Santos" }
+        guest_email: { type: string, format: email, example: "maria@restaurantx.com" }
+        guest_phone: { type: string, example: "+351 912 345 678" }
+        guest_tz: { type: string, example: "Europe/Lisbon" }
+        lang:
+          type: string
+          description: Language code for the confirmation email (en/pt/es/fr/de/da). Defaults to en.
+          example: pt
+
+    Booking:
+      type: object
+      properties:
+        booking_id: { type: integer, example: 4271 }
+        slot_start: { type: string, format: date-time }
+        slot_end: { type: string, format: date-time }
+        status: { type: string, example: confirmed }
+        staff:
+          type: object
+          properties:
+            name: { type: string, example: "Leonardo" }
+            email: { type: string, example: "leonardo@letsumai.com" }
+        meeting_link: { type: string, nullable: true, example: "https://meet.google.com/abc-defg-hij" }
+        meeting_type:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            label: { type: string }
+      required: [booking_id, slot_start, slot_end, status, staff]
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code.
+              example: SLOT_CONFLICT
+            message:
+              type: string
+              example: "Slot is no longer available."
+            request_id:
+              type: string
+              example: "5f4e9bc2-7f38-4f8d-b9c1-2a16f8d19b21"
+      required: [error]

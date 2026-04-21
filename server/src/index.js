@@ -13,6 +13,7 @@ const adminRoutes = require('./routes/admin');
 const authRoutes = require('./routes/auth');
 const googleOAuthRoutes = require('./routes/googleOAuth');
 const inviteRoutes = require('./routes/invite');
+const publicApiRoutes = require('./routes/public');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -41,6 +42,11 @@ app.use(express.static(frontendDir));
 app.use('/api/availability', availabilityLimiter, availabilityRoutes);
 app.use('/api/bookings', bookingLimiter, bookingRoutes);
 app.use('/api/invite', inviteRoutes);
+
+// Public API (key-authenticated, for server-to-server consumers like AI voice agents).
+// Rate-limited with the same bucket as the funnel bookings for now — per-key limits
+// are a follow-up.
+app.use('/api/public', bookingLimiter, publicApiRoutes);
 
 // Auth + Admin routes (rate limiting applied per-endpoint in auth.js)
 app.use('/api/auth', authRoutes);
