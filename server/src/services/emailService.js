@@ -57,6 +57,120 @@ const MEETING_LINK_TEXT = {
   da: { join: 'Deltag i modet', copy: 'Eller kopier dette link:' },
 };
 
+// Locales that use 24-hour clocks by default. English defaults to 12-hour AM/PM.
+// Anything not listed falls through to 12-hour to avoid surprising users whose
+// locale convention hasn't been explicitly validated yet.
+const TWENTY_FOUR_HOUR_LOCALES = new Set(['pt', 'es', 'fr', 'de', 'da']);
+
+// Map app locale codes to full IETF tags for Intl APIs. Luxon's setLocale accepts
+// either, but Intl.DateTimeFormat.formatToParts expects full tags for timeZoneName.
+const LOCALE_TAG = {
+  en: 'en-US',
+  pt: 'pt-PT',
+  es: 'es-ES',
+  fr: 'fr-FR',
+  de: 'de-DE',
+  da: 'da-DK',
+};
+
+// Cache city labels to avoid recomputing on every email; tz keys are stable.
+const cityLabelCache = new Map();
+
+/**
+ * Human-friendly city label for an IANA timezone, e.g. 'Europe/Lisbon' -> 'Lisboa' (PT)
+ * or 'America/New_York' -> 'New York' (EN). Falls back to the last path segment with
+ * underscores replaced by spaces if the Intl lookup doesn't surface a city.
+ */
+function timezoneCityLabel(tz, lang) {
+  const cacheKey = `${tz}|${lang || 'en'}`;
+  if (cityLabelCache.has(cacheKey)) return cityLabelCache.get(cacheKey);
+
+  const tag = LOCALE_TAG[lang] || LOCALE_TAG.en;
+  let label = tz.split('/').pop().replace(/_/g, ' ');
+  try {
+    const parts = new Intl.DateTimeFormat(tag, {
+      timeZone: tz,
+      timeZoneName: 'long',
+    }).formatToParts(new Date());
+    const tzPart = parts.find((p) => p.type === 'timeZoneName');
+    if (tzPart && tzPart.value) {
+      // Strip leading "Hora de ..." / "Horário ..." / etc. — we want a short city label,
+      // not the full zone name. If the Intl name looks like a raw offset (GMT+01:00),
+      // keep the city-path fallback instead.
+      if (!/^(GMT|UTC)/i.test(tzPart.value)) label = tzPart.value;
+    }
+  } catch { /* keep fallback */ }
+
+  // Hand-tuned PT translations for the most common zones — Intl's full zone name in
+  // pt-PT produces verbose strings ("Hora de Verão da Europa Ocidental") unsuitable
+  // for a compact `City (UTC±X)` label. Fall back to the raw city path otherwise.
+  if (lang === 'pt') {
+    const PT_CITY = {
+      'Europe/Lisbon': 'Lisboa',
+      'Europe/Madrid': 'Madrid',
+      'Europe/London': 'Londres',
+      'Europe/Paris': 'Paris',
+      'Europe/Berlin': 'Berlim',
+      'Europe/Copenhagen': 'Copenhaga',
+      'America/New_York': 'Nova Iorque',
+      'America/Los_Angeles': 'Los Angeles',
+      'America/Sao_Paulo': 'São Paulo',
+      'Asia/Tokyo': 'Tóquio',
+      'Asia/Dubai': 'Dubai',
+      'Asia/Singapore': 'Singapura',
+      'Australia/Sydney': 'Sydney',
+    };
+    if (PT_CITY[tz]) label = PT_CITY[tz];
+  }
+
+  cityLabelCache.set(cacheKey, label);
+  return label;
+}
+
+/**
+ * Format the booking's date/time/timezone as locale-native strings for email.
+ *
+ * EN:  "Monday, April 21, 2026" + "2:30 PM - 3:00 PM" + "Lisbon (UTC+1)"
+ * PT:  "segunda-feira, 21 de abril de 2026" + "14:30 - 15:00" + "Lisboa (UTC+1)"
+ *
+ * Offset is recomputed per slot via Luxon, so DST transitions surface correctly
+ * (UTC+0 in winter / UTC+1 in summer for Lisbon).
+ */
+function formatBookingDateTime({ slotStart, slotEnd, tz, lang }) {
+  const locale = lang || 'en';
+  // If the supplied tz is missing or invalid (garbage string in legacy data),
+  // fall back to UTC — better a correct UTC time than "UTC+NaN" in an email.
+  // Warn so bad data surfaces in logs instead of shipping wrong-zone emails silently.
+  const tzValid = !!(tz && DateTime.now().setZone(tz).isValid);
+  if (tz && !tzValid) {
+    logger.warn({ tz, lang }, 'formatBookingDateTime: invalid timezone, falling back to UTC');
+  }
+  const safeTz = tzValid ? tz : 'UTC';
+  const startDt = DateTime.fromISO(slotStart, { zone: safeTz }).setLocale(locale);
+  const endDt = slotEnd ? DateTime.fromISO(slotEnd, { zone: safeTz }).setLocale(locale) : null;
+
+  const dateStr = startDt.toLocaleString(DateTime.DATE_HUGE);
+
+  const timeFormat = TWENTY_FOUR_HOUR_LOCALES.has(locale)
+    ? { hour: '2-digit', minute: '2-digit', hour12: false }
+    : DateTime.TIME_SIMPLE;
+  const timeStr = endDt
+    ? `${startDt.toLocaleString(timeFormat)} - ${endDt.toLocaleString(timeFormat)}`
+    : startDt.toLocaleString(timeFormat);
+
+  const offsetMinutes = startDt.isValid ? startDt.offset : 0;
+  const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+  const absMinutes = Math.abs(offsetMinutes);
+  const offsetHours = Math.floor(absMinutes / 60);
+  const offsetMins = absMinutes % 60;
+  const offsetLabel = offsetMins === 0
+    ? `UTC${offsetSign}${offsetHours}`
+    : `UTC${offsetSign}${offsetHours}:${String(offsetMins).padStart(2, '0')}`;
+  const tzStr = `${timezoneCityLabel(safeTz, locale)} (${offsetLabel})`;
+
+  return { dateStr, timeStr, tzStr };
+}
+
 function buildMeetingLinkBlock(meetingLink, lang) {
   if (!meetingLink) return '';
   const t = MEETING_LINK_TEXT[lang] || MEETING_LINK_TEXT.en;
@@ -84,12 +198,7 @@ async function sendConfirmation({ guestName, guestEmail, slotStart, slotEnd, gue
     return false;
   }
 
-  const startDt = DateTime.fromISO(slotStart, { zone: guestTz });
-  const endDt = DateTime.fromISO(slotEnd, { zone: guestTz });
-
-  const dateStr = startDt.setLocale(lang || 'en').toFormat('EEEE, MMMM d, yyyy');
-  const timeStr = `${startDt.toFormat('h:mm a')} - ${endDt.toFormat('h:mm a')}`;
-  const tzStr = startDt.toFormat('ZZZZZ');
+  const { dateStr, timeStr, tzStr } = formatBookingDateTime({ slotStart, slotEnd, tz: guestTz, lang });
 
   let html = getTemplate('confirmationEmail', lang);
   html = html.replace(/{{guestName}}/g, guestName);
@@ -127,9 +236,7 @@ async function sendCancellation({ guestName, guestEmail, slotStart, guestTz, rep
   const transporter = getTransporter();
   if (!transporter) return false;
 
-  const startDt = DateTime.fromISO(slotStart, { zone: guestTz });
-  const dateStr = startDt.setLocale(lang || 'en').toFormat('EEEE, MMMM d, yyyy');
-  const timeStr = startDt.toFormat('h:mm a');
+  const { dateStr, timeStr } = formatBookingDateTime({ slotStart, slotEnd: null, tz: guestTz, lang });
 
   let html;
   try {
@@ -180,12 +287,7 @@ async function sendUpdate({ guestName, guestEmail, slotStart, slotEnd, guestTz, 
     return false;
   }
 
-  const startDt = DateTime.fromISO(slotStart, { zone: guestTz });
-  const endDt = DateTime.fromISO(slotEnd, { zone: guestTz });
-
-  const dateStr = startDt.setLocale(lang || 'en').toFormat('EEEE, MMMM d, yyyy');
-  const timeStr = `${startDt.toFormat('h:mm a')} - ${endDt.toFormat('h:mm a')}`;
-  const tzStr = startDt.toFormat('ZZZZZ');
+  const { dateStr, timeStr, tzStr } = formatBookingDateTime({ slotStart, slotEnd, tz: guestTz, lang });
 
   const isOnline = meetingTypeLabel === 'Online' || meetingTypeLabel === 'Freemium';
   const location = isOnline ? 'Online' : (venueAddress || venueName || 'In-Person');

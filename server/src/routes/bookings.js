@@ -1,5 +1,4 @@
 const { Router } = require('express');
-const crypto = require('crypto');
 const { DateTime } = require('luxon');
 const { pool } = require('../config/db');
 const logger = require('../lib/logger');
@@ -9,6 +8,7 @@ const emailService = require('../services/emailService');
 const staffService = require('../services/staffService');
 const pushover = require('../services/pushoverService');
 const { buildCalendarCopy } = require('../lib/calendarCopy');
+const { bookingSlotLockKey } = require('../lib/bookingLock');
 const { isValidEmail, stripHtml } = require('../middleware/validate');
 
 const router = Router();
@@ -67,10 +67,9 @@ router.post('/', async (req, res, next) => {
 
     await client.query('BEGIN');
 
-    // Advisory lock: MD5 hash of slot times to avoid collisions
-    const lockSeed = `${slot_start}:${slot_end}`;
-    const lockHash = crypto.createHash('md5').update(lockSeed).digest();
-    const lockKey = Math.abs(lockHash.readInt32BE(0));
+    // Advisory lock: derive a stable key from normalized slot bounds so
+    // POST /bookings and PUT /bookings/:id/reassign serialize on the same slot.
+    const lockKey = bookingSlotLockKey(slot_start, slot_end);
     await client.query('SELECT pg_advisory_xact_lock($1)', [lockKey]);
 
     // Look up meeting type label and buffer before staff assignment and conflict check
