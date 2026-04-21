@@ -994,4 +994,29 @@ router.put('/meeting-types/:id/weights', requireTeamLead, async (req, res, next)
   }
 });
 
+// ── Diagnostics ─────────────────────────────────────
+// Admin-only probes. Kept narrow: only admins (requireAdmin at router.use) can hit
+// these, and the response doesn't echo secret values — just outcomes.
+
+// POST /api/admin/debug/pushover-test — fires a test notification and returns the
+// outcome (ok/status/reason/body). Use this to distinguish "tokens missing" from
+// "tokens revoked" from "network timeout" without creating a real booking.
+router.post('/debug/pushover-test', requireRole('admin'), async (req, res, next) => {
+  try {
+    const result = await pushover.sendNotification({
+      title: 'PURP diagnostic',
+      message: `Test notification from admin ${req.admin?.email || '?'} at ${new Date().toISOString()}`,
+      priority: 0,
+    });
+    res.json({
+      message: 'Pushover test complete',
+      result,
+      env: {
+        hasUserKey: !!process.env.PUSHOVER_USER_KEY,
+        hasAppToken: !!process.env.PUSHOVER_APP_TOKEN,
+      },
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
