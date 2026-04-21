@@ -133,7 +133,10 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
  * @param {boolean} [data.isActive]
  * @returns {object|null} The updated row, or null if not found.
  */
-async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings }) {
+async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings }, teamId) {
+  // teamId REQUIRED — scope the WHERE so team A can't mutate team B's staff
+  // via /api/admin/staff/:id by enumerating ids. See security audit H1.
+  if (teamId == null) throw new Error('updateStaff: teamId is required for tenant scoping');
   const { rows } = await pool.query(
     `UPDATE staff_members
      SET name               = COALESCE($2, name),
@@ -143,24 +146,39 @@ async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isAc
          is_active          = COALESCE($6, is_active),
          max_daily_meetings = COALESCE($7, max_daily_meetings),
          updated_at         = NOW()
-     WHERE id = $1
+     WHERE id = $1 AND team_id = $8
      RETURNING *`,
-    [id, name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings != null ? maxDailyMeetings : undefined]
+    [id, name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings != null ? maxDailyMeetings : undefined, teamId]
   );
   return rows[0] || null;
 }
 
 /**
- * Delete a staff member by ID.
+ * Delete a staff member by ID, scoped to the caller's team.
  * @param {number} id
+ * @param {number} teamId - REQUIRED, blocks cross-team deletes. See H1.
  * @returns {boolean} True if a row was deleted, false otherwise.
  */
-async function deleteStaff(id) {
+async function deleteStaff(id, teamId) {
+  if (teamId == null) throw new Error('deleteStaff: teamId is required for tenant scoping');
   const { rowCount } = await pool.query(
-    'DELETE FROM staff_members WHERE id = $1',
-    [id]
+    'DELETE FROM staff_members WHERE id = $1 AND team_id = $2',
+    [id, teamId]
   );
   return rowCount > 0;
+}
+
+/**
+ * Check whether a staff id belongs to the given team. Used by route handlers
+ * to pre-authorize operations on sub-resources (duration-overrides, invites).
+ */
+async function staffBelongsToTeam(id, teamId) {
+  if (teamId == null) return false;
+  const { rows } = await pool.query(
+    'SELECT 1 FROM staff_members WHERE id = $1 AND team_id = $2 LIMIT 1',
+    [id, teamId]
+  );
+  return rows.length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -449,12 +467,16 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0, maxDail
 
 /**
  * Regenerate an invite token for an existing staff member (e.g. if the old one expired).
+ * teamId REQUIRED — caller must be in the same team as the staff row. Without this a
+ * team lead in team A could regenerate tokens for team B staff and read them back.
  * @param {number} staffId
- * @returns {string|null} The new invite token, or null if staff not found.
+ * @param {number} teamId
+ * @returns {string|null} The new invite token, or null if staff not found or wrong team.
  */
-async function regenerateInviteToken(staffId) {
+async function regenerateInviteToken(staffId, teamId) {
+  if (teamId == null) throw new Error('regenerateInviteToken: teamId is required for tenant scoping');
   const staff = await getStaffById(staffId);
-  if (!staff) return null;
+  if (!staff || staff.team_id !== teamId) return null;
 
   const inviteToken = crypto.randomBytes(32).toString('hex');
   const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -488,6 +510,7 @@ module.exports = {
   createStaff,
   updateStaff,
   deleteStaff,
+  staffBelongsToTeam,
   selectStaffForSlot,
   regenerateInviteToken,
 };
