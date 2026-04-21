@@ -8,7 +8,8 @@ function requireAdmin(req, res, next) {
 
   const token = header.slice(7);
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    // Pin algorithm: without this, a crafted header with alg: none would be accepted.
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     req.admin = payload;
     next();
   } catch {

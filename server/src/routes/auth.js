@@ -179,7 +179,7 @@ router.post('/set-password', async (req, res, next) => {
         return res.status(401).json({ error: 'Authentication required' });
       }
       try {
-        const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET);
+        const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET, { algorithms: ['HS256'] });
         adminId = payload.id;
       } catch {
         return res.status(401).json({ error: 'Invalid or expired token' });
