@@ -75,6 +75,21 @@ const DESCRIPTION_BUILDERS = {
   },
 };
 
+/**
+ * Strip HTML-looking content and control characters from guest-controlled text
+ * before it goes into a Google Calendar event. Google Calendar's description
+ * field accepts a small HTML subset and surfaces in email attendee notifications,
+ * so raw user input is unsafe.
+ *
+ * We remove < > entirely (not HTML-entity-encode — calendar description is not
+ * HTML-rendered end-to-end, and `&lt;` would render literally in some clients)
+ * and strip control chars that could smuggle calendar invite headers.
+ */
+function sanitizeCalendarText(s) {
+  if (s == null) return '';
+  return String(s).replace(/[<>\r\n\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ').trim();
+}
+
 function buildCalendarCopy({ lang, slotStartIso, guestTz, plan, meetingTypeLabel, venueName, venueAddress, guestName, addons }) {
   const effectiveLang = DESCRIPTION_BUILDERS[lang] ? lang : 'en';
   const isMini = plan === 'mini';
@@ -82,7 +97,12 @@ function buildCalendarCopy({ lang, slotStartIso, guestTz, plan, meetingTypeLabel
   const dt = DateTime.fromISO(slotStartIso, { zone: guestTz || 'UTC' }).setLocale(effectiveLang);
   const formattedDay = dt.toFormat('MMMM d');
   const formattedTime = dt.toFormat('HH:mm');
-  const venue = venueAddress || venueName || THE_VENUE_FALLBACK[effectiveLang] || THE_VENUE_FALLBACK.en;
+
+  // Sanitize every guest-controlled string before interpolating into calendar copy. See C3.
+  const safeVenueName = sanitizeCalendarText(venueName);
+  const safeVenueAddress = sanitizeCalendarText(venueAddress);
+  const safeGuestName = sanitizeCalendarText(guestName);
+  const venue = safeVenueAddress || safeVenueName || THE_VENUE_FALLBACK[effectiveLang] || THE_VENUE_FALLBACK.en;
 
   let description = DESCRIPTION_BUILDERS[effectiveLang]({
     formattedDay, formattedTime, venueName: venue, isMini, isOnline,
@@ -91,10 +111,10 @@ function buildCalendarCopy({ lang, slotStartIso, guestTz, plan, meetingTypeLabel
     const addonsHeader = {
       en: 'Add-ons', pt: 'Extras', es: 'Extras', fr: 'Options', de: 'Zusätze', da: 'Tilvalg',
     }[effectiveLang] || 'Add-ons';
-    description += `\n\n${addonsHeader}:\n` + addons.map(a => `- ${a}`).join('\n');
+    description += `\n\n${addonsHeader}:\n` + addons.map(a => `- ${sanitizeCalendarText(a)}`).join('\n');
   }
 
-  const summary = `UMAI x ${venueName || guestName} - ${SUMMARY_SUFFIX[effectiveLang] || SUMMARY_SUFFIX.en}`;
+  const summary = `UMAI x ${safeVenueName || safeGuestName} - ${SUMMARY_SUFFIX[effectiveLang] || SUMMARY_SUFFIX.en}`;
   return { summary, description };
 }
 

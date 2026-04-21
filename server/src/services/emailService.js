@@ -91,12 +91,15 @@ async function sendConfirmation({ guestName, guestEmail, slotStart, slotEnd, gue
   const timeStr = `${startDt.toFormat('h:mm a')} - ${endDt.toFormat('h:mm a')}`;
   const tzStr = startDt.toFormat('ZZZZZ');
 
+  // Escape guest-controlled inputs before HTML substitution. Without this a guest
+  // can register with `guest_name='"><img src=x onerror=...>'` and land an XSS
+  // payload in the staff member's inbox when they view the confirmation. See C3.
   let html = getTemplate('confirmationEmail', lang);
-  html = html.replace(/{{guestName}}/g, guestName);
-  html = html.replace(/{{date}}/g, dateStr);
-  html = html.replace(/{{time}}/g, timeStr);
-  html = html.replace(/{{timezone}}/g, tzStr);
-  html = html.replace(/{{venueName}}/g, venueName || 'your venue');
+  html = html.replace(/{{guestName}}/g, escapeHtml(guestName));
+  html = html.replace(/{{date}}/g, escapeHtml(dateStr));
+  html = html.replace(/{{time}}/g, escapeHtml(timeStr));
+  html = html.replace(/{{timezone}}/g, escapeHtml(tzStr));
+  html = html.replace(/{{venueName}}/g, escapeHtml(venueName || 'your venue'));
 
   html = html.replace(/{{meetingLinkBlock}}/g, buildMeetingLinkBlock(meetingLink, lang));
 
@@ -131,19 +134,26 @@ async function sendCancellation({ guestName, guestEmail, slotStart, guestTz, rep
   const dateStr = startDt.setLocale(lang || 'en').toFormat('EEEE, MMMM d, yyyy');
   const timeStr = startDt.toFormat('h:mm a');
 
+  // Escape guest-controlled inputs (guestName is user input; date/time come from the
+  // system but still go through escape for consistency). See C3.
+  const safeName = escapeHtml(guestName);
+  const safeDate = escapeHtml(dateStr);
+  const safeTime = escapeHtml(timeStr);
+
   let html;
   try {
     html = getTemplate('cancellationEmail', lang);
-    html = html.replace(/{{guestName}}/g, guestName);
-    html = html.replace(/{{date}}/g, dateStr);
-    html = html.replace(/{{time}}/g, timeStr);
+    html = html.replace(/{{guestName}}/g, safeName);
+    html = html.replace(/{{date}}/g, safeDate);
+    html = html.replace(/{{time}}/g, safeTime);
   } catch {
-    // Fallback to inline HTML if no template exists
+    // Fallback to inline HTML if no template exists. Previously used raw template
+    // literal interpolation — that was an XSS sink. Escaped variants used here.
     html = `
       <div style="font-family: 'DM Sans', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
         <h2 style="color: #2D2D3A;">Session Cancelled</h2>
-        <p>Hi ${guestName},</p>
-        <p>Your UMAI training session on <strong>${dateStr}</strong> at <strong>${timeStr}</strong> has been cancelled.</p>
+        <p>Hi ${safeName},</p>
+        <p>Your UMAI training session on <strong>${safeDate}</strong> at <strong>${safeTime}</strong> has been cancelled.</p>
         <p>If you'd like to reschedule, please contact us or complete the sign-up process again.</p>
         <p style="color: #71717A; font-size: 13px; margin-top: 32px;">- The UMAI Team</p>
       </div>
@@ -190,14 +200,15 @@ async function sendUpdate({ guestName, guestEmail, slotStart, slotEnd, guestTz, 
   const isOnline = meetingTypeLabel === 'Online' || meetingTypeLabel === 'Freemium';
   const location = isOnline ? 'Online' : (venueAddress || venueName || 'In-Person');
 
+  // Escape all guest-controlled inputs before HTML substitution. See C3.
   let html = getTemplate('updateEmail', lang);
-  html = html.replace(/{{guestName}}/g, guestName);
-  html = html.replace(/{{date}}/g, dateStr);
-  html = html.replace(/{{time}}/g, timeStr);
-  html = html.replace(/{{timezone}}/g, tzStr);
-  html = html.replace(/{{venueName}}/g, venueName || 'your venue');
-  html = html.replace(/{{meetingType}}/g, meetingTypeLabel || 'Training');
-  html = html.replace(/{{location}}/g, location);
+  html = html.replace(/{{guestName}}/g, escapeHtml(guestName));
+  html = html.replace(/{{date}}/g, escapeHtml(dateStr));
+  html = html.replace(/{{time}}/g, escapeHtml(timeStr));
+  html = html.replace(/{{timezone}}/g, escapeHtml(tzStr));
+  html = html.replace(/{{venueName}}/g, escapeHtml(venueName || 'your venue'));
+  html = html.replace(/{{meetingType}}/g, escapeHtml(meetingTypeLabel || 'Training'));
+  html = html.replace(/{{location}}/g, escapeHtml(location));
   html = html.replace(/{{meetingLinkBlock}}/g, buildMeetingLinkBlock(meetingLink, lang));
 
   const subject = (SUBJECTS.update[lang] || SUBJECTS.update.en) + ` - ${dateStr}`;
