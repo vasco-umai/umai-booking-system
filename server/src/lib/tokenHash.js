@@ -7,23 +7,17 @@ const crypto = require('crypto');
  * Not intended as a password hash — these tokens have 256 bits of entropy
  * (`crypto.randomBytes(32)`), so a fast hash is appropriate. bcrypt/argon2
  * would be needlessly slow here.
+ *
+ * Note on timing attacks: we rely on Postgres's standard equality on the
+ * `_hash` column for lookup. A constant-time JS comparison would be required
+ * only if an attacker could observe per-byte DB response time over the
+ * network. The real tokens are 256-bit random values — guessing one requires
+ * ~2^256 work, so practical timing discrimination is not useful here. Keeping
+ * the note so future callers don't reach for a helper that would add ceremony
+ * without benefit.
  */
 function hashToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
-/**
- * Constant-time comparison of two hex hashes, guarding against timing attacks
- * on the DB lookup + compare path. Both args must be same length for
- * timingSafeEqual; we pad to 64 chars to normalize.
- */
-function timingSafeEqualHex(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  if (a.length !== b.length || a.length === 0) return false;
-  const bufA = Buffer.from(a, 'hex');
-  const bufB = Buffer.from(b, 'hex');
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
-
-module.exports = { hashToken, timingSafeEqualHex };
+module.exports = { hashToken };

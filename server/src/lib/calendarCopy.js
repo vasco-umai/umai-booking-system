@@ -87,7 +87,12 @@ const DESCRIPTION_BUILDERS = {
  */
 function sanitizeCalendarText(s) {
   if (s == null) return '';
-  return String(s).replace(/[<>\r\n\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ').trim();
+  // Strip: angle brackets (HTML smuggling), C0 controls, C1 controls, bidi
+  // overrides (U+202A–U+202E, U+2066–U+2069), zero-width chars / BOM, and
+  // line/paragraph separators. Covers more than the initial ASCII-only pass
+  // so a guestName can't hide RTL overrides or invisible text in calendar
+  // summaries seen by staff. See self-review M-B.
+  return String(s).replace(/[<>\r\n\x00-\x1F\x7F-\x9F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069\uFEFF]/gu, ' ').trim();
 }
 
 function buildCalendarCopy({ lang, slotStartIso, guestTz, plan, meetingTypeLabel, venueName, venueAddress, guestName, addons }) {

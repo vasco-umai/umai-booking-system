@@ -402,6 +402,20 @@ router.put('/staff/:id/duration-overrides', requireTeamLead, async (req, res, ne
       return res.status(400).json({ error: 'overrides must be an array of { meeting_type_id, duration_minutes }' });
     }
 
+    // Cross-tenant check on the payload: every meeting_type_id must belong to
+    // the caller's team. Without this a team lead could attach overrides pointing
+    // at another team's meeting types. See M-A.
+    const mtIds = overrides.map((o) => o.meeting_type_id).filter(Boolean);
+    if (mtIds.length > 0) {
+      const { rows: mtCheck } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM meeting_types WHERE id = ANY($1) AND team_id = $2',
+        [mtIds, teamId]
+      );
+      if (mtCheck[0].n !== mtIds.length) {
+        return res.status(400).json({ error: 'One or more meeting types are not on this team', code: 'CROSS_TEAM_MEETING_TYPE' });
+      }
+    }
+
     await client.query('BEGIN');
 
     // Delete existing overrides for this staff member
@@ -983,10 +997,35 @@ router.put('/meeting-types/:id/weights', requireTeamLead, async (req, res, next)
   const client = await pool.connect();
   try {
     const meetingTypeId = parseInt(req.params.id);
+    const teamId = getEffectiveTeamId(req);
+
+    // Tenant check: meeting type + every staff_member_id in the payload must
+    // belong to the caller's team. Without this a team lead could overwrite
+    // another team's rotation by enumerating ids. See H1 / self-review H-A.
+    const { rows: mt } = await pool.query(
+      'SELECT 1 FROM meeting_types WHERE id = $1 AND team_id = $2 LIMIT 1',
+      [meetingTypeId, teamId]
+    );
+    if (mt.length === 0) return res.status(404).json({ error: 'Meeting type not found' });
+
     const { weights } = req.body; // [{staff_member_id, weight}]
 
     if (!Array.isArray(weights)) {
       return res.status(400).json({ error: 'weights must be an array of {staff_member_id, weight}' });
+    }
+
+    // Collect staff ids and verify they're all on this team before any write.
+    const staffIds = weights
+      .map((w) => w.staff_member_id)
+      .filter((id) => id != null);
+    if (staffIds.length > 0) {
+      const { rows: staffCheck } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM staff_members WHERE id = ANY($1) AND team_id = $2',
+        [staffIds, teamId]
+      );
+      if (staffCheck[0].n !== staffIds.length) {
+        return res.status(400).json({ error: 'One or more staff members are not on this team', code: 'CROSS_TEAM_STAFF' });
+      }
     }
 
     await client.query('BEGIN');
