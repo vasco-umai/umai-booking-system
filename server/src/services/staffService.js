@@ -3,6 +3,7 @@ const { DateTime } = require('luxon');
 const { pool } = require('../config/db');
 const logger = require('../lib/logger');
 const calendarService = require('./calendarService');
+const { hashToken } = require('../lib/tokenHash');
 
 // Emails that must always have admin role -- prevents accidental role loss
 const PROTECTED_ADMIN_EMAILS = [
@@ -89,8 +90,11 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
     [name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings || 0, teamId]
   );
 
-  // Also create an admin_users login so the team member can log in
+  // Also create an admin_users login so the team member can log in.
+  // Invite token: the raw value goes into the invite URL (emailed), but we
+  // store only the SHA-256 hash in the DB. See H3.
   const inviteToken = crypto.randomBytes(32).toString('hex');
+  const inviteTokenHash = hashToken(inviteToken);
   const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
   const { rows: existingAdmin } = await pool.query(
@@ -102,17 +106,19 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
     // New user -- create admin_users record with appropriate role
     const role = PROTECTED_ADMIN_EMAILS.includes(email.toLowerCase()) ? 'admin' : 'restricted';
     await pool.query(
-      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires, team_id)
+      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token_hash, invite_token_expires, team_id)
        VALUES (LOWER($1), NULL, $2, true, $3, $4, $5, $6)`,
-      [email, name, role, inviteToken, inviteExpires, teamId]
+      [email, name, role, inviteTokenHash, inviteExpires, teamId]
     );
   } else {
     const admin = existingAdmin[0];
     // Only regenerate invite token if user hasn't completed onboarding yet
     if (admin.must_set_password || !admin.password_hash) {
       await pool.query(
-        'UPDATE admin_users SET invite_token = $1, invite_token_expires = $2 WHERE id = $3',
-        [inviteToken, inviteExpires, admin.id]
+        `UPDATE admin_users
+         SET invite_token = NULL, invite_token_hash = $1, invite_token_expires = $2
+         WHERE id = $3`,
+        [inviteTokenHash, inviteExpires, admin.id]
       );
     }
     // If already onboarded: don't touch their record at all
@@ -479,12 +485,17 @@ async function regenerateInviteToken(staffId, teamId) {
   if (!staff || staff.team_id !== teamId) return null;
 
   const inviteToken = crypto.randomBytes(32).toString('hex');
+  const inviteTokenHash = hashToken(inviteToken);
   const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
+  // Store the hash in the DB; return the raw token to the caller so it can be
+  // embedded in the invite URL. Legacy invite_token column cleared so any
+  // outstanding plaintext token for this user is superseded. See H3.
   const result = await pool.query(
-    `UPDATE admin_users SET invite_token = $1, invite_token_expires = $2
+    `UPDATE admin_users
+     SET invite_token = NULL, invite_token_hash = $1, invite_token_expires = $2
      WHERE LOWER(email) = LOWER($3)`,
-    [inviteToken, inviteExpires, staff.email]
+    [inviteTokenHash, inviteExpires, staff.email]
   );
 
   // No admin_users record found -- create one so the invite token is actually saved
@@ -492,9 +503,9 @@ async function regenerateInviteToken(staffId, teamId) {
     logger.info({ email: staff.email, staffId }, '[INVITE] No admin_users record found, creating one');
     const role = PROTECTED_ADMIN_EMAILS.includes(staff.email.toLowerCase()) ? 'admin' : 'restricted';
     await pool.query(
-      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires, team_id)
+      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token_hash, invite_token_expires, team_id)
        VALUES (LOWER($1), NULL, $2, true, $3, $4, $5, $6)`,
-      [staff.email, staff.name, role, inviteToken, inviteExpires, staff.team_id]
+      [staff.email, staff.name, role, inviteTokenHash, inviteExpires, staff.team_id]
     );
   } else {
     logger.info({ email: staff.email, staffId, rowCount: result.rowCount }, '[INVITE] Token regenerated');

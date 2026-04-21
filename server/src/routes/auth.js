@@ -6,6 +6,7 @@ const { pool } = require('../config/db');
 const logger = require('../lib/logger');
 const { loginLimiter, forgotPasswordLimiter, checkEmailLimiter } = require('../middleware/rateLimiter');
 const { isValidEmail, isStrongPassword } = require('../middleware/validate');
+const { hashToken } = require('../lib/tokenHash');
 
 const router = Router();
 
@@ -104,20 +105,26 @@ router.get('/invite/validate', async (req, res, next) => {
       return res.status(400).json({ error: 'Token is required' });
     }
 
+    const tokenHash = hashToken(token);
+    // Match either the hashed column (new tokens after H3 migration) or the
+    // legacy plaintext column (existing tokens — allowed to age out within
+    // their 7-day expiry, then we drop the legacy column in a follow-up).
     const { rows } = await pool.query(
       `SELECT au.id, au.name, au.email, au.must_set_password, au.password_hash,
               sm.id as staff_id, sm.google_refresh_token
        FROM admin_users au
        LEFT JOIN staff_members sm ON LOWER(sm.email) = LOWER(au.email)
-       WHERE au.invite_token = $1 AND au.invite_token_expires > NOW()`,
-      [token]
+       WHERE (au.invite_token_hash = $1 OR (au.invite_token_hash IS NULL AND au.invite_token = $2))
+         AND au.invite_token_expires > NOW()`,
+      [tokenHash, token]
     );
 
     if (rows.length === 0) {
       // Check if token exists at all (even if expired) to provide useful diagnostics
       const { rows: debugRows } = await pool.query(
-        `SELECT invite_token_expires, NOW() as db_now FROM admin_users WHERE invite_token = $1`,
-        [token]
+        `SELECT invite_token_expires, NOW() as db_now FROM admin_users
+         WHERE invite_token_hash = $1 OR (invite_token_hash IS NULL AND invite_token = $2)`,
+        [tokenHash, token]
       );
       if (debugRows.length > 0) {
         const expires = debugRows[0].invite_token_expires;
@@ -161,12 +168,20 @@ router.post('/set-password', async (req, res, next) => {
     let adminId;
 
     if (resetToken) {
-      // Forgot-password or invite flow: validate reset_token or invite_token
+      // Forgot-password or invite flow: validate via hashed column (new tokens)
+      // with fallback to legacy plaintext column (existing tokens pre-migration).
+      const tokenHash = hashToken(resetToken);
       const { rows } = await pool.query(
         `SELECT * FROM admin_users
-         WHERE (reset_token = $1 AND reset_token_expires > NOW())
-            OR (invite_token = $1 AND invite_token_expires > NOW())`,
-        [resetToken]
+         WHERE (
+             (reset_token_hash = $1 OR (reset_token_hash IS NULL AND reset_token = $2))
+             AND reset_token_expires > NOW()
+           )
+            OR (
+             (invite_token_hash = $1 OR (invite_token_hash IS NULL AND invite_token = $2))
+             AND invite_token_expires > NOW()
+           )`,
+        [tokenHash, resetToken]
       );
       if (rows.length === 0) {
         return res.status(400).json({ error: 'Invalid or expired link' });
@@ -190,8 +205,8 @@ router.post('/set-password', async (req, res, next) => {
     await pool.query(
       `UPDATE admin_users
        SET password_hash = $1, must_set_password = false,
-           reset_token = NULL, reset_token_expires = NULL,
-           invite_token = NULL, invite_token_expires = NULL
+           reset_token = NULL, reset_token_expires = NULL, reset_token_hash = NULL,
+           invite_token = NULL, invite_token_expires = NULL, invite_token_hash = NULL
        WHERE id = $2`,
       [hash, adminId]
     );
@@ -234,10 +249,16 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res, next) =>
     const admin = rows[0];
     const resetToken = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const resetTokenHash = hashToken(resetToken);
 
+    // Write to the _hash column only. Legacy reset_token column set to NULL
+    // so if the user had an older plaintext token outstanding, it's invalidated
+    // in favor of this new hashed one.
     await pool.query(
-      'UPDATE admin_users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3',
-      [resetToken, expires, admin.id]
+      `UPDATE admin_users
+       SET reset_token = NULL, reset_token_hash = $1, reset_token_expires = $2
+       WHERE id = $3`,
+      [resetTokenHash, expires, admin.id]
     );
 
     // Send reset email
