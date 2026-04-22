@@ -3002,7 +3002,7 @@ function isPastBooking(b) {
 }
 
 function bookingBucket(b) {
-  const status = (b && b.status || '').toLowerCase();
+  const status = (b?.status || '').toLowerCase();
   if (status === 'cancelled') return 'cancelled';
   if (status === 'completed') return 'concluded';
   if (status === 'confirmed' && isPastBooking(b)) return 'concluded';
