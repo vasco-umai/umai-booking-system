@@ -7,7 +7,8 @@
     "start": "node server/src/index.js",
     "dev": "nodemon server/src/index.js",
     "migrate": "node server/migrations/run.js",
-    "seed": "node server/seeds/run.js"
+    "seed": "node server/seeds/run.js",
+    "test": "node --test server/src/**/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

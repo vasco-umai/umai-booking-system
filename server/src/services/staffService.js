@@ -10,6 +10,26 @@ const PROTECTED_ADMIN_EMAILS = [
   'margarida.c@letsumai.com',
 ];
 
+/**
+ * Resolve the effective assignment weight for a staff member.
+ *
+ * Hierarchy (meeting-type > team):
+ *   - If the meeting type defines a per-staff weight (including 0), that value wins.
+ *   - Otherwise fall back to the team-level `meeting_pct` on the staff row.
+ *
+ * A meeting-type weight of 0 MUST return 0 — setting someone to 0% in the
+ * meeting is how they're excluded from that meeting's rotation even when
+ * the team default is >0.
+ *
+ * @param {{id:number|string, meeting_pct:number}} staff
+ * @param {Record<string|number, number>} staffWeightMap - staff_member_id -> meeting weight
+ * @returns {number}
+ */
+function resolveStaffWeight(staff, staffWeightMap) {
+  const override = staffWeightMap ? staffWeightMap[staff.id] : undefined;
+  return override != null ? override : staff.meeting_pct;
+}
+
 // ---------------------------------------------------------------------------
 // CRUD Operations
 // ---------------------------------------------------------------------------
@@ -392,8 +412,9 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0, maxDail
     );
     for (const w of weightRows) staffWeightMap[w.staff_member_id] = w.weight;
   }
-  // For each staff, use per-meeting-type weight if available, else fall back to global meeting_pct
-  const getWeight = (s) => staffWeightMap[s.id] != null ? staffWeightMap[s.id] : s.meeting_pct;
+  // For each staff, use per-meeting-type weight if available, else fall back to global meeting_pct.
+  // See resolveStaffWeight() at the top of this file for the full hierarchy contract.
+  const getWeight = (s) => resolveStaffWeight(s, staffWeightMap);
 
   const totalPct = underLimitStaff.reduce((sum, s) => sum + getWeight(s), 0);
   let weights;
@@ -490,4 +511,5 @@ module.exports = {
   deleteStaff,
   selectStaffForSlot,
   regenerateInviteToken,
+  resolveStaffWeight,
 };
