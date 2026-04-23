@@ -281,32 +281,42 @@ tbody tr:hover{background:var(--card)}
 .badge-pending{background:rgba(245,158,11,0.1);color:var(--warning)}
 .badge-completed{background:rgba(34,197,94,0.1);color:var(--success)}
 
-/* ===== CANCELLED COMPARTMENT ===== */
-.cancelled-divider{
+/* ===== COLLAPSIBLE COMPARTMENTS (Concluded, Cancelled) ===== */
+.cancelled-divider,
+.concluded-divider{
   display:flex;align-items:center;gap:12px;
   padding:14px 16px;cursor:pointer;user-select:none;
   border-top:1px solid var(--border-lt);
 }
-.cancelled-divider:hover .cancelled-label{color:var(--text)}
-.cancelled-chevron{
+.cancelled-divider:hover .cancelled-label,
+.concluded-divider:hover .concluded-label{color:var(--text)}
+.cancelled-chevron,
+.concluded-chevron{
   width:16px;height:16px;color:var(--text-light);
   transition:transform .2s ease;flex-shrink:0;
 }
-.cancelled-divider.open .cancelled-chevron{transform:rotate(90deg)}
-.cancelled-label{
+.cancelled-divider.open .cancelled-chevron,
+.concluded-divider.open .concluded-chevron{transform:rotate(90deg)}
+.cancelled-label,
+.concluded-label{
   font-size:12px;font-weight:600;color:var(--text-mid);
   text-transform:uppercase;letter-spacing:.4px;
   transition:color .2s ease;
 }
-.cancelled-count{
+.cancelled-count,
+.concluded-count{
   font-size:11px;font-weight:500;color:var(--text-light);
   background:var(--card);border-radius:var(--r-pill);
   padding:2px 10px;
 }
-.cancelled-tbody{display:none}
-.cancelled-tbody.open{display:table-row-group}
+.cancelled-tbody,
+.concluded-tbody{display:none}
+.cancelled-tbody.open,
+.concluded-tbody.open{display:table-row-group}
 .cancelled-tbody tr td{opacity:0.4}
 .cancelled-tbody tr:hover td{opacity:0.65}
+.concluded-tbody tr td{opacity:0.55}
+.concluded-tbody tr:hover td{opacity:0.8}
 
 /* ===== INLINE FORM ===== */
 .inline-form{
@@ -801,6 +811,28 @@ tbody tr:hover{background:var(--card)}
           <tbody id="bookingsBody">
             <tr class="loading-row"><td colspan="8"><div class="spinner spinner-dark" style="margin:0 auto"></div></td></tr>
           </tbody>
+        </table>
+
+        <!-- Concluded Bookings Compartment (past confirmed meetings) -->
+        <div class="concluded-divider" id="concludedToggle" style="display:none" onclick="toggleConcluded()">
+          <svg class="concluded-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          <span class="concluded-label">Concluded</span>
+          <span class="concluded-count" id="concludedCount">0</span>
+        </div>
+        <table style="display:none" id="concludedTable">
+          <thead>
+            <tr>
+              <th>Guest</th>
+              <th>Email</th>
+              <th>Venue</th>
+              <th>Date &amp; Time</th>
+              <th>Assigned To</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="concluded-tbody" id="concludedBody"></tbody>
         </table>
 
         <!-- Cancelled Bookings Compartment -->
@@ -2955,12 +2987,35 @@ const cancelledToggle = $('#cancelledToggle');
 const cancelledCount  = $('#cancelledCount');
 const cancelledBody   = $('#cancelledBody');
 const cancelledTable  = $('#cancelledTable');
+const concludedToggle = $('#concludedToggle');
+const concludedCount  = $('#concludedCount');
+const concludedBody   = $('#concludedBody');
+const concludedTable  = $('#concludedTable');
+
+// A confirmed booking is "concluded" once its end time has passed.
+// Null/invalid slotEnd -> treat as upcoming (defensive; column is NOT NULL in DB).
+function isPastBooking(b) {
+  if (!b || !b.slotEnd) return false;
+  const end = new Date(b.slotEnd).getTime();
+  if (Number.isNaN(end)) return false;
+  return end < Date.now();
+}
+
+function bookingBucket(b) {
+  const status = (b?.status || '').toLowerCase();
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'completed') return 'concluded';
+  if (status === 'confirmed' && isPastBooking(b)) return 'concluded';
+  return 'active';
+}
 
 function renderBookings() {
-  const active = (bookings || []).filter(b => (b.status || '').toLowerCase() !== 'cancelled');
-  const cancelled = (bookings || []).filter(b => (b.status || '').toLowerCase() === 'cancelled');
+  const all = bookings || [];
+  const active    = all.filter(b => bookingBucket(b) === 'active');
+  const concluded = all.filter(b => bookingBucket(b) === 'concluded');
+  const cancelled = all.filter(b => bookingBucket(b) === 'cancelled');
 
-  if (active.length === 0 && cancelled.length === 0) {
+  if (active.length === 0 && concluded.length === 0 && cancelled.length === 0) {
     bookingsBody.innerHTML = `
       <tr><td colspan="8">
         <div class="empty-state">
@@ -2968,6 +3023,8 @@ function renderBookings() {
           <p>No bookings found matching your filters.</p>
         </div>
       </td></tr>`;
+    concludedToggle.style.display = 'none';
+    concludedTable.style.display = 'none';
     cancelledToggle.style.display = 'none';
     cancelledTable.style.display = 'none';
     return;
@@ -2978,11 +3035,23 @@ function renderBookings() {
       <tr><td colspan="8">
         <div class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <p>No active bookings found.</p>
+          <p>No upcoming bookings.</p>
         </div>
       </td></tr>`;
   } else {
     bookingsBody.innerHTML = active.map(b => renderBookingRow(b)).join('');
+  }
+
+  // Concluded compartment
+  if (concluded.length > 0) {
+    concludedToggle.style.display = 'flex';
+    concludedCount.textContent = concluded.length;
+    concludedBody.innerHTML = concluded.map(b => renderBookingRow(b)).join('');
+    const isOpen = concludedToggle.classList.contains('open');
+    concludedTable.style.display = isOpen ? 'table' : 'none';
+  } else {
+    concludedToggle.style.display = 'none';
+    concludedTable.style.display = 'none';
   }
 
   // Cancelled compartment
@@ -2990,7 +3059,6 @@ function renderBookings() {
     cancelledToggle.style.display = 'flex';
     cancelledCount.textContent = cancelled.length;
     cancelledBody.innerHTML = cancelled.map(b => renderBookingRow(b)).join('');
-    // Show/hide table based on toggle state
     const isOpen = cancelledToggle.classList.contains('open');
     cancelledTable.style.display = isOpen ? 'table' : 'none';
   } else {
@@ -3003,12 +3071,14 @@ function renderBookingRow(b) {
   const status = (b.status || 'pending').toLowerCase();
   const badgeClass = 'badge-' + status;
   const isConfirmed = status === 'confirmed';
+  const isPast = isPastBooking(b);
+  const canAct = isConfirmed && !isPast;
   const emailSent = b.confirmationEmailSent === true;
   const emailDot = isConfirmed
     ? `<span title="${emailSent ? 'Confirmation email sent' : 'Confirmation email NOT sent'}" style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:${emailSent ? '#22c55e' : '#ef4444'};"></span>`
     : '';
   const bookingKey = b._id || b.id;
-  const actions = isConfirmed ? `
+  const actions = canAct ? `
     <div class="row-actions" data-booking-id="${bookingKey}">
       <button class="row-actions-btn" onclick="toggleRowActions(event, '${bookingKey}')">
         Actions
@@ -3056,6 +3126,14 @@ window.toggleCancelled = function() {
   cancelledTable.style.display = isOpen ? 'table' : 'none';
   if (isOpen) cancelledBody.classList.add('open');
   else cancelledBody.classList.remove('open');
+};
+
+window.toggleConcluded = function() {
+  concludedToggle.classList.toggle('open');
+  const isOpen = concludedToggle.classList.contains('open');
+  concludedTable.style.display = isOpen ? 'table' : 'none';
+  if (isOpen) concludedBody.classList.add('open');
+  else concludedBody.classList.remove('open');
 };
 
 window.cancelBooking = async function(id) {
