@@ -18,11 +18,14 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 
-// CORS - warn if wildcard in production
-const corsOrigin = process.env.FRONTEND_URL || '*';
-if (corsOrigin === '*' && process.env.NODE_ENV === 'production') {
-  logger.warn('CORS origin is set to * in production. This is insecure. Set FRONTEND_URL.');
+// CORS - hard-fail on boot if FRONTEND_URL is unset in production.
+// Previously this degraded to `origin: '*'` with only a warn log, which meant
+// a missing env var silently opened CORS to any origin. See H4.
+if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
+  logger.fatal('FRONTEND_URL must be set in production to constrain CORS origin');
+  process.exit(1);
 }
+const corsOrigin = process.env.FRONTEND_URL || '*';
 app.use(cors({
   origin: corsOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],

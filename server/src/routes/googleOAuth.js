@@ -2,7 +2,8 @@ const { Router } = require('express');
 const { pool } = require('../config/db');
 const logger = require('../lib/logger');
 const { getOAuth2Client } = require('../config/google');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, getEffectiveTeamId } = require('../middleware/auth');
+const staffService = require('../services/staffService');
 
 const router = Router();
 
@@ -17,11 +18,15 @@ router.get('/staff/:id/google/authorize', requireAdmin, async (req, res, next) =
       return res.status(500).json({ error: 'Google OAuth is not configured. Set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, and GOOGLE_OAUTH_REDIRECT_URI.' });
     }
 
-    const staffId = req.params.id;
+    const staffId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+      return res.status(400).json({ error: 'Invalid staff id' });
+    }
+    const teamId = getEffectiveTeamId(req);
 
-    // Verify staff exists
-    const { rows } = await pool.query('SELECT id FROM staff_members WHERE id = $1', [staffId]);
-    if (rows.length === 0) {
+    // Tenant check: staff must belong to caller's team. Otherwise any admin could
+    // start a Google OAuth flow for another team's staff. See H1 / self-review H-B.
+    if (!(await staffService.staffBelongsToTeam(staffId, teamId))) {
       return res.status(404).json({ error: 'Staff member not found' });
     }
 
@@ -108,13 +113,21 @@ router.get('/staff/google/callback', async (req, res) => {
 // Remove the stored OAuth tokens for a staff member.
 router.post('/staff/:id/google/disconnect', requireAdmin, async (req, res, next) => {
   try {
+    const staffId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(staffId) || staffId <= 0) {
+      return res.status(400).json({ error: 'Invalid staff id' });
+    }
+    const teamId = getEffectiveTeamId(req);
+
+    // Tenant scope: add team_id to WHERE so an admin in team A cannot disconnect
+    // team B's Google integration by enumerating ids. See H1 / self-review H-B.
     const { rowCount } = await pool.query(
       `UPDATE staff_members
        SET google_refresh_token = NULL,
            google_calendar_id = NULL,
            updated_at = NOW()
-       WHERE id = $1`,
-      [req.params.id]
+       WHERE id = $1 AND team_id = $2`,
+      [staffId, teamId]
     );
 
     if (rowCount === 0) {
