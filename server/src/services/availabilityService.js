@@ -1,6 +1,7 @@
 const { DateTime } = require('luxon');
 const { pool } = require('../config/db');
 const logger = require('../lib/logger');
+const { isPortugueseHoliday } = require('../lib/portugalHolidays');
 const calendarService = require('./calendarService');
 const staffService = require('./staffService');
 
@@ -65,6 +66,8 @@ async function getAvailableSlots(dateStr, userTz = 'UTC', durationOverride, meet
   if (!userDate.isValid) {
     throw Object.assign(new Error('Invalid date'), { status: 400 });
   }
+
+  if (isPortugueseHoliday(dateStr)) return [];
 
   const dayOfWeek = userDate.weekday === 7 ? 0 : userDate.weekday;
 
@@ -522,7 +525,7 @@ async function getMonthAvailability(year, month, userTz = 'UTC', meetingTypeId, 
     if (date < now) continue;
 
     const dow = date.weekday === 7 ? 0 : date.weekday;
-    if (activeDays.has(dow) && !mtDisabledDays.has(dow)) {
+    if (activeDays.has(dow) && !mtDisabledDays.has(dow) && !isPortugueseHoliday(date.toISODate())) {
       availableDates.push(date.toISODate());
     }
   }
