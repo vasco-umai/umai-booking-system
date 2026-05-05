@@ -3,6 +3,7 @@ const { DateTime } = require('luxon');
 const { pool } = require('../config/db');
 const logger = require('../lib/logger');
 const calendarService = require('./calendarService');
+const { hashToken } = require('../lib/tokenHash');
 
 // Emails that must always have admin role -- prevents accidental role loss
 const PROTECTED_ADMIN_EMAILS = [
@@ -109,8 +110,11 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
     [name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings || 0, teamId]
   );
 
-  // Also create an admin_users login so the team member can log in
+  // Also create an admin_users login so the team member can log in.
+  // Invite token: the raw value goes into the invite URL (emailed), but we
+  // store only the SHA-256 hash in the DB. See H3.
   const inviteToken = crypto.randomBytes(32).toString('hex');
+  const inviteTokenHash = hashToken(inviteToken);
   const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
   const { rows: existingAdmin } = await pool.query(
@@ -122,17 +126,19 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
     // New user -- create admin_users record with appropriate role
     const role = PROTECTED_ADMIN_EMAILS.includes(email.toLowerCase()) ? 'admin' : 'restricted';
     await pool.query(
-      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires, team_id)
+      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token_hash, invite_token_expires, team_id)
        VALUES (LOWER($1), NULL, $2, true, $3, $4, $5, $6)`,
-      [email, name, role, inviteToken, inviteExpires, teamId]
+      [email, name, role, inviteTokenHash, inviteExpires, teamId]
     );
   } else {
     const admin = existingAdmin[0];
     // Only regenerate invite token if user hasn't completed onboarding yet
     if (admin.must_set_password || !admin.password_hash) {
       await pool.query(
-        'UPDATE admin_users SET invite_token = $1, invite_token_expires = $2 WHERE id = $3',
-        [inviteToken, inviteExpires, admin.id]
+        `UPDATE admin_users
+         SET invite_token = NULL, invite_token_hash = $1, invite_token_expires = $2
+         WHERE id = $3`,
+        [inviteTokenHash, inviteExpires, admin.id]
       );
     }
     // If already onboarded: don't touch their record at all
@@ -153,7 +159,10 @@ async function createStaff({ name, email, meetingPct = 100, googleCalendarId = n
  * @param {boolean} [data.isActive]
  * @returns {object|null} The updated row, or null if not found.
  */
-async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings }) {
+async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings }, teamId) {
+  // teamId REQUIRED — scope the WHERE so team A can't mutate team B's staff
+  // via /api/admin/staff/:id by enumerating ids. See security audit H1.
+  if (teamId == null) throw new Error('updateStaff: teamId is required for tenant scoping');
   const { rows } = await pool.query(
     `UPDATE staff_members
      SET name               = COALESCE($2, name),
@@ -163,24 +172,39 @@ async function updateStaff(id, { name, email, meetingPct, googleCalendarId, isAc
          is_active          = COALESCE($6, is_active),
          max_daily_meetings = COALESCE($7, max_daily_meetings),
          updated_at         = NOW()
-     WHERE id = $1
+     WHERE id = $1 AND team_id = $8
      RETURNING *`,
-    [id, name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings != null ? maxDailyMeetings : undefined]
+    [id, name, email, meetingPct, googleCalendarId, isActive, maxDailyMeetings != null ? maxDailyMeetings : undefined, teamId]
   );
   return rows[0] || null;
 }
 
 /**
- * Delete a staff member by ID.
+ * Delete a staff member by ID, scoped to the caller's team.
  * @param {number} id
+ * @param {number} teamId - REQUIRED, blocks cross-team deletes. See H1.
  * @returns {boolean} True if a row was deleted, false otherwise.
  */
-async function deleteStaff(id) {
+async function deleteStaff(id, teamId) {
+  if (teamId == null) throw new Error('deleteStaff: teamId is required for tenant scoping');
   const { rowCount } = await pool.query(
-    'DELETE FROM staff_members WHERE id = $1',
-    [id]
+    'DELETE FROM staff_members WHERE id = $1 AND team_id = $2',
+    [id, teamId]
   );
   return rowCount > 0;
+}
+
+/**
+ * Check whether a staff id belongs to the given team. Used by route handlers
+ * to pre-authorize operations on sub-resources (duration-overrides, invites).
+ */
+async function staffBelongsToTeam(id, teamId) {
+  if (teamId == null) return false;
+  const { rows } = await pool.query(
+    'SELECT 1 FROM staff_members WHERE id = $1 AND team_id = $2 LIMIT 1',
+    [id, teamId]
+  );
+  return rows.length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,20 +494,29 @@ async function selectStaffForSlot(slotStart, slotEnd, bufferMinutes = 0, maxDail
 
 /**
  * Regenerate an invite token for an existing staff member (e.g. if the old one expired).
+ * teamId REQUIRED — caller must be in the same team as the staff row. Without this a
+ * team lead in team A could regenerate tokens for team B staff and read them back.
  * @param {number} staffId
- * @returns {string|null} The new invite token, or null if staff not found.
+ * @param {number} teamId
+ * @returns {string|null} The new invite token, or null if staff not found or wrong team.
  */
-async function regenerateInviteToken(staffId) {
+async function regenerateInviteToken(staffId, teamId) {
+  if (teamId == null) throw new Error('regenerateInviteToken: teamId is required for tenant scoping');
   const staff = await getStaffById(staffId);
-  if (!staff) return null;
+  if (!staff || staff.team_id !== teamId) return null;
 
   const inviteToken = crypto.randomBytes(32).toString('hex');
+  const inviteTokenHash = hashToken(inviteToken);
   const inviteExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
+  // Store the hash in the DB; return the raw token to the caller so it can be
+  // embedded in the invite URL. Legacy invite_token column cleared so any
+  // outstanding plaintext token for this user is superseded. See H3.
   const result = await pool.query(
-    `UPDATE admin_users SET invite_token = $1, invite_token_expires = $2
+    `UPDATE admin_users
+     SET invite_token = NULL, invite_token_hash = $1, invite_token_expires = $2
      WHERE LOWER(email) = LOWER($3)`,
-    [inviteToken, inviteExpires, staff.email]
+    [inviteTokenHash, inviteExpires, staff.email]
   );
 
   // No admin_users record found -- create one so the invite token is actually saved
@@ -491,9 +524,9 @@ async function regenerateInviteToken(staffId) {
     logger.info({ email: staff.email, staffId }, '[INVITE] No admin_users record found, creating one');
     const role = PROTECTED_ADMIN_EMAILS.includes(staff.email.toLowerCase()) ? 'admin' : 'restricted';
     await pool.query(
-      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token, invite_token_expires, team_id)
+      `INSERT INTO admin_users (email, password_hash, name, must_set_password, role, invite_token_hash, invite_token_expires, team_id)
        VALUES (LOWER($1), NULL, $2, true, $3, $4, $5, $6)`,
-      [staff.email, staff.name, role, inviteToken, inviteExpires, staff.team_id]
+      [staff.email, staff.name, role, inviteTokenHash, inviteExpires, staff.team_id]
     );
   } else {
     logger.info({ email: staff.email, staffId, rowCount: result.rowCount }, '[INVITE] Token regenerated');
@@ -509,6 +542,7 @@ module.exports = {
   createStaff,
   updateStaff,
   deleteStaff,
+  staffBelongsToTeam,
   selectStaffForSlot,
   regenerateInviteToken,
   resolveStaffWeight,

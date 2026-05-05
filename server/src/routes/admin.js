@@ -324,7 +324,8 @@ router.post('/staff', requireTeamLead, async (req, res, next) => {
 // POST /api/admin/staff/:id/invite — regenerate invite token
 router.post('/staff/:id/invite', requireTeamLead, async (req, res, next) => {
   try {
-    const token = await staffService.regenerateInviteToken(req.params.id);
+    const teamId = getEffectiveTeamId(req);
+    const token = await staffService.regenerateInviteToken(req.params.id, teamId);
     if (!token) return res.status(404).json({ error: 'Staff member not found' });
     res.json({ invite_token: token });
   } catch (err) { next(err); }
@@ -334,6 +335,7 @@ router.post('/staff/:id/invite', requireTeamLead, async (req, res, next) => {
 router.put('/staff/:id', requireTeamLead, async (req, res, next) => {
   try {
     const { name, email, meeting_pct, google_calendar_id, is_active, max_daily_meetings } = req.body;
+    const teamId = getEffectiveTeamId(req);
     const staff = await staffService.updateStaff(req.params.id, {
       name,
       email,
@@ -341,7 +343,7 @@ router.put('/staff/:id', requireTeamLead, async (req, res, next) => {
       googleCalendarId: google_calendar_id,
       isActive: is_active,
       maxDailyMeetings: max_daily_meetings,
-    });
+    }, teamId);
     if (!staff) return res.status(404).json({ error: 'Staff member not found' });
     res.json(staff);
   } catch (err) {
@@ -355,7 +357,8 @@ router.put('/staff/:id', requireTeamLead, async (req, res, next) => {
 // DELETE /api/admin/staff/:id
 router.delete('/staff/:id', requireTeamLead, async (req, res, next) => {
   try {
-    const deleted = await staffService.deleteStaff(req.params.id);
+    const teamId = getEffectiveTeamId(req);
+    const deleted = await staffService.deleteStaff(req.params.id, teamId);
     if (!deleted) return res.status(404).json({ error: 'Staff member not found' });
     res.json({ message: 'Staff member deleted' });
   } catch (err) { next(err); }
@@ -366,6 +369,11 @@ router.delete('/staff/:id', requireTeamLead, async (req, res, next) => {
 // GET /api/admin/staff/:id/duration-overrides
 router.get('/staff/:id/duration-overrides', requireTeamLead, async (req, res, next) => {
   try {
+    const teamId = getEffectiveTeamId(req);
+    // Tenant check: staff must belong to caller's team. See H1.
+    if (!(await staffService.staffBelongsToTeam(parseInt(req.params.id, 10), teamId))) {
+      return res.status(404).json({ error: 'Staff member not found' });
+    }
     const { rows } = await pool.query(
       `SELECT sdo.*, mt.name as meeting_type_name, mt.label as meeting_type_label, mt.duration_minutes as default_duration
        FROM staff_duration_overrides sdo
@@ -383,10 +391,29 @@ router.put('/staff/:id/duration-overrides', requireTeamLead, async (req, res, ne
   const client = await pool.connect();
   try {
     const staffId = parseInt(req.params.id, 10);
+    const teamId = getEffectiveTeamId(req);
+    // Tenant check: staff must belong to caller's team. See H1.
+    if (!(await staffService.staffBelongsToTeam(staffId, teamId))) {
+      return res.status(404).json({ error: 'Staff member not found' });
+    }
     const { overrides } = req.body; // [{ meeting_type_id, duration_minutes }]
 
     if (!Array.isArray(overrides)) {
       return res.status(400).json({ error: 'overrides must be an array of { meeting_type_id, duration_minutes }' });
+    }
+
+    // Cross-tenant check on the payload: every meeting_type_id must belong to
+    // the caller's team. Without this a team lead could attach overrides pointing
+    // at another team's meeting types. See M-A.
+    const mtIds = overrides.map((o) => o.meeting_type_id).filter(Boolean);
+    if (mtIds.length > 0) {
+      const { rows: mtCheck } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM meeting_types WHERE id = ANY($1) AND team_id = $2',
+        [mtIds, teamId]
+      );
+      if (mtCheck[0].n !== mtIds.length) {
+        return res.status(400).json({ error: 'One or more meeting types are not on this team', code: 'CROSS_TEAM_MEETING_TYPE' });
+      }
     }
 
     await client.query('BEGIN');
@@ -814,7 +841,7 @@ router.get('/meeting-types', async (req, res, next) => {
 });
 
 // POST /api/admin/meeting-types
-router.post('/meeting-types', async (req, res, next) => {
+router.post('/meeting-types', requireTeamLead, async (req, res, next) => {
   try {
     const { name, label, duration_minutes, is_active, buffer_minutes, min_advance_minutes, max_daily_meetings } = req.body;
     const teamId = getEffectiveTeamId(req);
@@ -836,7 +863,7 @@ router.post('/meeting-types', async (req, res, next) => {
 });
 
 // PUT /api/admin/meeting-types/:id
-router.put('/meeting-types/:id', async (req, res, next) => {
+router.put('/meeting-types/:id', requireTeamLead, async (req, res, next) => {
   try {
     const { id } = req.params;
     const teamId = getEffectiveTeamId(req);
@@ -865,7 +892,7 @@ router.put('/meeting-types/:id', async (req, res, next) => {
 });
 
 // DELETE /api/admin/meeting-types/:id
-router.delete('/meeting-types/:id', async (req, res, next) => {
+router.delete('/meeting-types/:id', requireTeamLead, async (req, res, next) => {
   try {
     const teamId = getEffectiveTeamId(req);
     const { rowCount } = await pool.query('DELETE FROM meeting_types WHERE id = $1 AND team_id = $2', [req.params.id, teamId]);
@@ -875,9 +902,13 @@ router.delete('/meeting-types/:id', async (req, res, next) => {
 });
 
 // PUT /api/admin/meeting-types/:id/plans  — set plan mappings
-router.put('/meeting-types/:id/plans', async (req, res, next) => {
+router.put('/meeting-types/:id/plans', requireTeamLead, async (req, res, next) => {
   try {
     const { id } = req.params;
+    const teamId = getEffectiveTeamId(req);
+    // Tenant check: meeting type must belong to caller's team. See H1.
+    const { rows: mt } = await pool.query('SELECT 1 FROM meeting_types WHERE id = $1 AND team_id = $2 LIMIT 1', [id, teamId]);
+    if (mt.length === 0) return res.status(404).json({ error: 'Meeting type not found' });
     const { plans } = req.body; // e.g. ['mini', 'pro', 'proplus']
     if (!Array.isArray(plans)) {
       return res.status(400).json({ error: 'plans must be an array' });
@@ -906,9 +937,13 @@ router.put('/meeting-types/:id/plans', async (req, res, next) => {
 });
 
 // PUT /api/admin/meeting-types/:id/schedule  — set day-of-week availability
-router.put('/meeting-types/:id/schedule', async (req, res, next) => {
+router.put('/meeting-types/:id/schedule', requireTeamLead, async (req, res, next) => {
   try {
     const { id } = req.params;
+    const teamId = getEffectiveTeamId(req);
+    // Tenant check: meeting type must belong to caller's team. See H1.
+    const { rows: mt } = await pool.query('SELECT 1 FROM meeting_types WHERE id = $1 AND team_id = $2 LIMIT 1', [id, teamId]);
+    if (mt.length === 0) return res.status(404).json({ error: 'Meeting type not found' });
     const { days } = req.body; // e.g. { "0": true, "1": true, "2": false, ... }
     if (!days || typeof days !== 'object') {
       return res.status(400).json({ error: 'days must be an object mapping day_of_week to boolean' });
@@ -962,10 +997,35 @@ router.put('/meeting-types/:id/weights', requireTeamLead, async (req, res, next)
   const client = await pool.connect();
   try {
     const meetingTypeId = parseInt(req.params.id);
+    const teamId = getEffectiveTeamId(req);
+
+    // Tenant check: meeting type + every staff_member_id in the payload must
+    // belong to the caller's team. Without this a team lead could overwrite
+    // another team's rotation by enumerating ids. See H1 / self-review H-A.
+    const { rows: mt } = await pool.query(
+      'SELECT 1 FROM meeting_types WHERE id = $1 AND team_id = $2 LIMIT 1',
+      [meetingTypeId, teamId]
+    );
+    if (mt.length === 0) return res.status(404).json({ error: 'Meeting type not found' });
+
     const { weights } = req.body; // [{staff_member_id, weight}]
 
     if (!Array.isArray(weights)) {
       return res.status(400).json({ error: 'weights must be an array of {staff_member_id, weight}' });
+    }
+
+    // Collect staff ids and verify they're all on this team before any write.
+    const staffIds = weights
+      .map((w) => w.staff_member_id)
+      .filter((id) => id != null);
+    if (staffIds.length > 0) {
+      const { rows: staffCheck } = await pool.query(
+        'SELECT COUNT(*)::int AS n FROM staff_members WHERE id = ANY($1) AND team_id = $2',
+        [staffIds, teamId]
+      );
+      if (staffCheck[0].n !== staffIds.length) {
+        return res.status(400).json({ error: 'One or more staff members are not on this team', code: 'CROSS_TEAM_STAFF' });
+      }
     }
 
     await client.query('BEGIN');
